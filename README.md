@@ -1,89 +1,55 @@
-<p align="center">
-  <a href="https://pi.dev">
-    <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">
-  </a>
-</p>
-<p align="center">
-  <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-</p>
-<p align="center">
-  <a href="https://pi.dev">pi.dev</a> domain graciously donated by
-  <br /><br />
-  <a href="https://exe.dev"><img src="packages/coding-agent/docs/images/exy.png" alt="Exy mascot" width="48" /><br />exe.dev</a>
-</p>
+# Pi-XK
 
-> New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Pi-XK is a public fork of Pi focused on Web mode, runtime attach, and fork-local agent product work.
 
----
+The repository keeps the upstream Pi package structure because the codebase still depends on those package names, import paths, and build contracts. The fork identity lives at the repository and product layer; package renaming should be handled as a separate migration if it becomes necessary.
 
-# Pi Agent Harness Mono Repo
+## Relationship To Upstream
 
-This is the home of the pi agent harness project including our self extensible coding agent.
+Pi-XK is derived from `earendil-works/pi` and remains MIT licensed.
 
-* **[@earendil-works/pi-coding-agent](packages/coding-agent)**: Interactive coding agent CLI
-* **[@earendil-works/pi-agent-core](packages/agent)**: Agent runtime with tool calling and state management
-* **[@earendil-works/pi-ai](packages/ai)**: Unified multi-provider LLM API (OpenAI, Anthropic, Google, …)
+Kept from upstream:
 
-To learn more about pi:
+- Core source packages under `packages/`.
+- Existing npm package scopes and TypeScript path aliases.
+- Build, check, and test scripts required to keep the fork maintainable.
+- The `upstream` git remote for selective reviewed merges.
 
-* [Visit pi.dev](https://pi.dev), the project website with demos
-* [Read the documentation](https://pi.dev/docs/latest), but you can also ask the agent to explain itself
+Removed from upstream:
 
-## Share your OSS coding agent sessions
+- GitHub Actions workflows and automatic repository gates.
+- Upstream issue templates and contributor approval automation.
+- Upstream README content that points users to official project governance or session-sharing programs.
 
-If you use pi or other coding agents for open source work, please share your sessions.
+## Packages
 
-Public OSS session data helps improve coding agents with real-world tasks, tool use, failures, and fixes instead of toy benchmarks.
-
-For the full explanation, see [this post on X](https://x.com/badlogicgames/status/2037811643774652911).
-
-To publish sessions, use [`badlogic/pi-share-hf`](https://github.com/badlogic/pi-share-hf). Read its README.md for setup instructions. All you need is a Hugging Face account, the Hugging Face CLI, and `pi-share-hf`.
-
-You can also watch [this video](https://x.com/badlogicgames/status/2041151967695634619), where I show how I publish my `pi-mono` sessions.
-
-I regularly publish my own `pi-mono` work sessions here:
-
-- [badlogicgames/pi-mono on Hugging Face](https://huggingface.co/datasets/badlogicgames/pi-mono)
-
-## All Packages
-
-| Package | Description |
-|---------|-------------|
-| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
-
-For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).
+| Package | Purpose |
+| --- | --- |
+| `packages/coding-agent` | CLI, TUI, RPC, Web mode, sessions, tools, and extensions |
+| `packages/agent` | Core agent loop and tool execution runtime |
+| `packages/ai` | Provider abstraction and model registry |
+| `packages/tui` | Terminal UI library |
 
 ## Development
 
 ```bash
-npm install --ignore-scripts  # Install all dependencies without running lifecycle scripts
-npm run build        # Build all packages
-npm run check        # Lint, format, and type check
-./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
+npm install --ignore-scripts
+npm run check
+npm run build
+./test.sh
+./pi-test.sh
 ```
 
-## Supply-chain hardening
+Use `npm run check` after code changes. Run targeted tests for modified test coverage. Full builds and broad tests should be intentional because this fork still inherits the upstream monorepo size.
 
-We treat npm dependency changes as reviewed code changes.
+## Repository Policy
 
-- Direct external dependencies are pinned to exact versions. Internal workspace packages remain version-ranged.
-- `.npmrc` sets `save-exact=true` and `min-release-age=2` to avoid same-day dependency releases during npm resolution.
-- `package-lock.json` is the dependency ground truth. Pre-commit blocks accidental lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1` is set.
-- `npm run check` verifies pinned direct deps, native TypeScript import compatibility, and the generated coding-agent shrinkwrap.
-- The published CLI package includes `packages/coding-agent/npm-shrinkwrap.json`, generated from the root lockfile, to pin transitive deps for npm users.
-- Release smoke tests use `npm run release:local` to build, pack, and create isolated npm and Bun installs outside the repo before tagging a release.
-- Local release installs, documented npm installs, and `pi update --self` use `--ignore-scripts` where supported.
-- CI installs with `npm ci --ignore-scripts`, and a scheduled GitHub workflow runs `npm audit --omit=dev` plus `npm audit signatures --omit=dev`.
-- Shrinkwrap generation has an explicit allowlist for dependency lifecycle scripts; new lifecycle-script deps fail checks until reviewed.
+- `origin` is `FengYunCalm/Pi-XK`.
+- `upstream` is kept only for reviewed syncs from `earendil-works/pi`.
+- GitHub Actions are disabled for this repository.
+- Releases and npm publishing are not automatic.
+- Preserve upstream compatibility unless a change explicitly includes a package rename or public API migration.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

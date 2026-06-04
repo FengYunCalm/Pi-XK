@@ -1,20 +1,20 @@
 # Development
 
-See [AGENTS.md](https://github.com/earendil-works/pi-mono/blob/main/AGENTS.md) for additional guidelines.
+See the repository [AGENTS.md](../../AGENTS.md) for fork-local development rules.
 
 ## Setup
 
 ```bash
-git clone https://github.com/earendil-works/pi-mono
-cd pi-mono
-npm install
-npm run build
+git clone https://github.com/FengYunCalm/Pi-XK
+cd Pi-XK
+npm install --ignore-scripts
+npm run check
 ```
 
 Run from source:
 
 ```bash
-/path/to/pi-mono/pi-test.sh
+/path/to/Pi-XK/pi-test.sh
 ```
 
 The script can be run from any directory. Pi keeps the caller's current working directory.

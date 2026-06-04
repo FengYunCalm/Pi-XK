@@ -1,22 +1,16 @@
-# Pi Documentation
+# Pi-XK Documentation
 
-Pi is a minimal terminal coding harness. It is designed to stay small at the core while being extended through TypeScript extensions, skills, prompt templates, themes, and pi packages.
+Pi-XK is a focused fork of Pi. It keeps the upstream agent architecture while adding fork-local Web mode and runtime attach work.
 
 ## Quick start
 
-Install Pi with npm:
+Install the compatible upstream package name with npm:
 
 ```bash
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 ```
 
 `--ignore-scripts` disables dependency lifecycle scripts during install. Pi does not require install scripts for normal npm installs.
-
-On Linux or macOS, you can also use the installer:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
 
 To uninstall pi itself, use npm for curl and npm installs:
 

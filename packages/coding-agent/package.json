@@ -111,7 +111,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/FengYunCalm/Pi-XK.git",
 		"directory": "packages/coding-agent"
 	},
 	"engines": {

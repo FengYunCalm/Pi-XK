@@ -130,9 +130,9 @@ Add a `pi` manifest to `package.json` or use conventional directories. Include t
 
 Paths are relative to the package root. Arrays support glob patterns and `!exclusions`.
 
-### Gallery Metadata
+### Preview Metadata
 
-The [package gallery](https://pi.dev/packages) displays packages tagged with `pi-package`. Add `video` or `image` fields to show a preview:
+Upstream Pi package tooling recognizes preview metadata for packages tagged with `pi-package`. Pi-XK keeps the manifest shape for compatibility. Add `video` or `image` fields to describe a preview:
 
 ```json
 {
