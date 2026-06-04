@@ -35,6 +35,7 @@ describe("SessionEventHub", () => {
 
 		expect(closed.send).not.toHaveBeenCalled();
 		expect(removed.send).not.toHaveBeenCalled();
+		expect(sessionSocketCount(hub)).toBe(0);
 	});
 
 	it("publishes global events only to global sockets", () => {
@@ -61,3 +62,8 @@ describe("SessionEventHub", () => {
 		expect(sessionSocket.send).not.toHaveBeenCalled();
 	});
 });
+
+function sessionSocketCount(hub: SessionEventHub): number {
+	const inspected = hub as unknown as { readonly socketsBySession: Map<string, Set<RealtimeSocket>> };
+	return [...inspected.socketsBySession.values()].reduce((total, sockets) => total + sockets.size, 0);
+}

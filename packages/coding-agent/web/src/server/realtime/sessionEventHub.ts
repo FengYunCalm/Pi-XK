@@ -20,6 +20,7 @@ export class SessionEventHub {
 		sockets.add(socket);
 		socket.on("close", () => {
 			sockets.delete(socket);
+			if (sockets.size === 0 && this.socketsBySession.get(sessionId) === sockets) this.socketsBySession.delete(sessionId);
 		});
 	}
 
@@ -30,9 +31,13 @@ export class SessionEventHub {
 
 	publish(sessionId: string, event: SessionUiEvent): void {
 		const payload = JSON.stringify(event);
-		for (const socket of this.socketsBySession.get(sessionId) ?? []) {
+		const sockets = this.socketsBySession.get(sessionId);
+		if (sockets === undefined) return;
+		for (const socket of sockets) {
 			if (socket.readyState === socket.OPEN) socket.send(payload);
+			else sockets.delete(socket);
 		}
+		if (sockets.size === 0) this.socketsBySession.delete(sessionId);
 	}
 
 	publishGlobal(event: GlobalSessionEvent): void {
@@ -43,6 +48,7 @@ export class SessionEventHub {
 		const payload = JSON.stringify(event);
 		for (const socket of this.globalSockets) {
 			if (socket.readyState === socket.OPEN) socket.send(payload);
+			else this.globalSockets.delete(socket);
 		}
 	}
 }
