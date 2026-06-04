@@ -17,20 +17,14 @@ import { AppShellController } from "../appShell/appShellController";
 import { MobileNavigationController, type NavigationSection } from "../appShell/navigationState";
 import { mainViewClass, PanelCollapseController } from "../appShell/panelCollapseController";
 import { type AppState, initialAppState } from "../appState";
-import { ActivityController } from "../controllers/activityController";
-import { AuthController } from "../controllers/authController";
-import { FileExplorerController } from "../controllers/fileExplorerController";
-import { GitController } from "../controllers/gitController";
-import { ProjectController } from "../controllers/projectController";
-import { SessionController } from "../controllers/sessionController";
+import { createAppControllers } from "../controllers/appControllers";
 import { InMemoryTerminalSelectionMemory } from "../controllers/terminalSelection";
-import { canDeleteWorkspace, WorkspaceController } from "../controllers/workspaceController";
+import { canDeleteWorkspace } from "../controllers/workspaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
-import { corePlugin } from "../plugins/core";
+import { createBuiltinPluginRegistry } from "../plugins/builtin";
 import { loadExternalPlugins } from "../plugins/external";
-import { installPluginRuntimeScope, installWorkspacePanelScope, PluginRegistry } from "../plugins/registry";
-import { themePackPlugin } from "../plugins/themes";
+import { installPluginRuntimeScope, installWorkspacePanelScope } from "../plugins/registry";
 import type {
 	PluginRuntimeContext,
 	QualifiedContributionId,
@@ -98,65 +92,22 @@ export class PiWebApp extends LitElement {
 	@query("chat-view") private chatView?: ChatView;
 	@query("prompt-editor") private promptEditor?: PromptEditor;
 
-	private readonly sessions = new SessionController(
-		() => this.state,
-		(patch) => {
+	private readonly controllers = createAppControllers({
+		getState: () => this.state,
+		setState: (patch) => {
 			this.setState(patch);
 		},
-		() => {
-			this.updateUrl();
+		updateUrl: (options) => {
+			this.updateUrl(options);
 		},
-	);
-	private readonly activity = new ActivityController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-	);
-	private readonly auth = new AuthController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-		(status) => {
-			this.sessions.applySessionStatus(status);
-		},
-	);
-	private readonly workspaces = new WorkspaceController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-		() => {
-			this.updateUrl();
-		},
-		this.sessions,
-	);
-	private readonly projects = new ProjectController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-		this.workspaces,
-	);
-	private readonly files = new FileExplorerController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-		() => {
-			this.updateUrl();
-		},
-	);
-	private readonly git = new GitController(
-		() => this.state,
-		(patch) => {
-			this.setState(patch);
-		},
-		() => {
-			this.updateUrl();
-		},
-	);
+	});
+	private readonly sessions = this.controllers.sessions;
+	private readonly activity = this.controllers.activity;
+	private readonly auth = this.controllers.auth;
+	private readonly workspaces = this.controllers.workspaces;
+	private readonly projects = this.controllers.projects;
+	private readonly files = this.controllers.files;
+	private readonly git = this.controllers.git;
 	private readonly keyboard = new KeyboardShortcutDispatcher();
 	private readonly realtime = new RealtimeSocket();
 	private readonly activeTerminalIds = new Set<string>();
@@ -180,7 +131,7 @@ export class PiWebApp extends LitElement {
 	private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
 	private routeRestoreInProgress = false;
 	private restoringRouteTerminalId: string | undefined;
-	private readonly plugins = createPluginRegistry();
+	private readonly plugins = createBuiltinPluginRegistry();
 	private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
 	@state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
 	@state() private isRefreshingApp = false;
@@ -1290,13 +1241,6 @@ export class PiWebApp extends LitElement {
 	}
 
 	static override styles = appStyles;
-}
-
-function createPluginRegistry(): PluginRegistry {
-	const registry = new PluginRegistry();
-	registry.register({ id: "core", plugin: corePlugin });
-	registry.register({ id: "themes", plugin: themePackPlugin });
-	return registry;
 }
 
 function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
