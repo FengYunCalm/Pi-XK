@@ -1,0 +1,67 @@
+import type { TerminalCommandRun, Workspace } from "./api";
+import type { AppState } from "./appState";
+
+export const workspaceDeleteOperation = "workspace.delete";
+export const workspaceDeleteOperationMetadataKey = "pi.operation";
+export const targetWorkspaceIdMetadataKey = "target.workspaceId";
+export const targetWorkspacePathMetadataKey = "target.workspacePath";
+
+export function workspaceDeletionMetadata(workspace: Workspace): Record<string, string> {
+	return {
+		[workspaceDeleteOperationMetadataKey]: workspaceDeleteOperation,
+		[targetWorkspaceIdMetadataKey]: workspace.id,
+		[targetWorkspacePathMetadataKey]: workspace.path,
+	};
+}
+
+export function workspaceDeletionRunFilter(projectId?: string): {
+	projectId?: string;
+	metadata: Record<string, string>;
+} {
+	return {
+		...(projectId === undefined ? {} : { projectId }),
+		metadata: { [workspaceDeleteOperationMetadataKey]: workspaceDeleteOperation },
+	};
+}
+
+export function latestWorkspaceDeletionRuns(runs: TerminalCommandRun[]): Record<string, TerminalCommandRun> {
+	const latest: Record<string, TerminalCommandRun> = {};
+	for (const run of runs) {
+		const workspaceId = targetWorkspaceIdForRun(run);
+		if (workspaceId === undefined) continue;
+		const current = latest[workspaceId];
+		if (current === undefined || run.createdAt.localeCompare(current.createdAt) >= 0) latest[workspaceId] = run;
+	}
+	return latest;
+}
+
+export function pendingWorkspaceDeletionIds(runsByWorkspaceId: Record<string, TerminalCommandRun>): string[] {
+	return Object.entries(runsByWorkspaceId)
+		.filter(([, run]) => isWorkspaceDeletionRunPending(run))
+		.map(([workspaceId]) => workspaceId);
+}
+
+export function isWorkspaceDeletionPending(
+	state: Pick<AppState, "workspaceDeletionRuns">,
+	workspace: Workspace | undefined,
+): boolean {
+	if (workspace === undefined) return false;
+	const run = state.workspaceDeletionRuns[workspace.id];
+	return run !== undefined && isWorkspaceDeletionRunPending(run);
+}
+
+export function targetWorkspaceIdForRun(run: TerminalCommandRun): string | undefined {
+	return run.metadata[targetWorkspaceIdMetadataKey];
+}
+
+export function targetWorkspacePathForRun(run: TerminalCommandRun): string | undefined {
+	return run.metadata[targetWorkspacePathMetadataKey];
+}
+
+export function isWorkspaceDeletionRunPending(run: TerminalCommandRun): boolean {
+	return run.status === "queued" || run.status === "running";
+}
+
+export function isWorkspaceDeletionRun(run: TerminalCommandRun): boolean {
+	return run.metadata[workspaceDeleteOperationMetadataKey] === workspaceDeleteOperation;
+}

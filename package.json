@@ -12,9 +12,10 @@
 	"scripts": {
 		"clean": "npm run clean --workspaces",
 		"build": "cd packages/tui && npm run build && cd ../ai && npm run build && cd ../agent && npm run build && cd ../coding-agent && npm run build",
-		"check": "biome check --write --error-on-warnings . && npm run check:pinned-deps && npm run check:ts-imports && npm run check:shrinkwrap && tsgo --noEmit && npm run check:browser-smoke",
+		"check": "biome check --write --error-on-warnings . && npm run check:pinned-deps && npm run check:ts-imports && npm run check:shrinkwrap && tsgo --noEmit && npm run check:pi-web && npm run check:browser-smoke",
 		"check:browser-smoke": "node scripts/check-browser-smoke.mjs",
 		"check:pinned-deps": "node scripts/check-pinned-deps.mjs",
+		"check:pi-web": "npm --prefix packages/coding-agent/web run typecheck",
 		"check:shrinkwrap": "node scripts/generate-coding-agent-shrinkwrap.mjs --check",
 		"check:ts-imports": "node scripts/check-ts-relative-imports.mjs",
 		"profile:tui": "node scripts/profile-coding-agent-node.mjs --mode tui",

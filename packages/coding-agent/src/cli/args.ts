@@ -24,6 +24,7 @@ export interface Args {
 	name?: string;
 	noSession?: boolean;
 	session?: string;
+	attach?: string;
 	sessionId?: string;
 	fork?: string;
 	sessionDir?: string;
@@ -104,6 +105,12 @@ export function parseArgs(args: string[]): Args {
 			result.noSession = true;
 		} else if (arg === "--session" && i + 1 < args.length) {
 			result.session = args[++i];
+		} else if (arg === "--attach") {
+			if (i + 1 < args.length) {
+				result.attach = args[++i];
+			} else {
+				result.diagnostics.push({ type: "error", message: "--attach requires a value" });
+			}
 		} else if (arg === "--session-id" && i + 1 < args.length) {
 			result.sessionId = args[++i];
 		} else if (arg === "--fork" && i + 1 < args.length) {
@@ -227,6 +234,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} update [source|self|pi]   Update pi and installed extensions
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config                    Open TUI to enable/disable package resources
+  ${APP_NAME} web <command>             Manage the built-in PI WEB server and session daemon
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list
 
 ${chalk.bold("Options:")}
@@ -240,6 +248,7 @@ ${chalk.bold("Options:")}
   --continue, -c                 Continue previous session
   --resume, -r                   Select a session to resume
   --session <path|id>            Use specific session file or partial UUID
+  --attach <path|id>             Attach TUI to a live runtime for this session
   --session-id <id>              Use exact project session ID, creating it if missing
   --fork <path|id>               Fork specific session file or partial UUID into a new session
   --session-dir <dir>            Directory for session storage and lookup

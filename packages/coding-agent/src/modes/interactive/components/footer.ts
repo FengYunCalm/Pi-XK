@@ -1,7 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { AgentSession } from "../../../core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import type { InteractiveSession } from "../interactive-runtime.ts";
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -47,15 +47,15 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
  */
 export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
-	private session: AgentSession;
+	private session: InteractiveSession;
 	private footerData: ReadonlyFooterDataProvider;
 
-	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
+	constructor(session: InteractiveSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
 		this.footerData = footerData;
 	}
 
-	setSession(session: AgentSession): void {
+	setSession(session: InteractiveSession): void {
 		this.session = session;
 	}
 

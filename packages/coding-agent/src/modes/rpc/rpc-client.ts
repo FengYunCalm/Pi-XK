@@ -5,13 +5,24 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { createConnection, type Socket } from "node:net";
 import type { AgentEvent, AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { ImageContent, Model, Transport } from "@earendil-works/pi-ai";
 import type { SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
+import type { KeybindingsConfig } from "../../core/keybindings.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
-import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "./rpc-types.ts";
+import type {
+	RpcCommand,
+	RpcExtensionUIRequest,
+	RpcExtensionUIResponse,
+	RpcResponse,
+	RpcSessionSnapshot,
+	RpcSessionState,
+	RpcShortcut,
+	RpcSlashCommand,
+} from "./rpc-types.ts";
 
 // ============================================================================
 // Types
@@ -36,6 +47,8 @@ export interface RpcClientOptions {
 	model?: string;
 	/** Additional CLI arguments */
 	args?: string[];
+	/** Existing runtime attach socket to connect to instead of spawning a process. */
+	socketPath?: string;
 }
 
 export interface ModelInfo {
@@ -46,6 +59,7 @@ export interface ModelInfo {
 }
 
 export type RpcEventListener = (event: AgentEvent) => void;
+export type RpcExtensionUIRequestListener = (request: RpcExtensionUIRequest) => void | Promise<void>;
 
 // ============================================================================
 // RPC Client
@@ -53,8 +67,10 @@ export type RpcEventListener = (event: AgentEvent) => void;
 
 export class RpcClient {
 	private process: ChildProcess | null = null;
+	private socket: Socket | null = null;
 	private stopReadingStdout: (() => void) | null = null;
 	private eventListeners: RpcEventListener[] = [];
+	private extensionUIRequestListeners: RpcExtensionUIRequestListener[] = [];
 	private pendingRequests: Map<string, { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }> =
 		new Map();
 	private requestId = 0;
@@ -70,11 +86,15 @@ export class RpcClient {
 	 * Start the RPC agent process.
 	 */
 	async start(): Promise<void> {
-		if (this.process) {
+		if (this.process || this.socket) {
 			throw new Error("Client already started");
 		}
 
 		this.exitError = null;
+		if (this.options.socketPath !== undefined) {
+			await this.startSocket(this.options.socketPath);
+			return;
+		}
 
 		const cliPath = this.options.cliPath ?? "dist/cli.js";
 		const args = ["--mode", "rpc"];
@@ -141,10 +161,18 @@ export class RpcClient {
 	 * Stop the RPC agent process.
 	 */
 	async stop(): Promise<void> {
-		if (!this.process) return;
+		if (!this.process && !this.socket) return;
 
 		this.stopReadingStdout?.();
 		this.stopReadingStdout = null;
+		if (this.socket) {
+			this.socket.end();
+			this.socket.destroy();
+			this.socket = null;
+			this.pendingRequests.clear();
+			return;
+		}
+		if (!this.process) return;
 		this.process.kill("SIGTERM");
 
 		// Wait for process to exit
@@ -177,6 +205,16 @@ export class RpcClient {
 		};
 	}
 
+	onExtensionUIRequest(listener: RpcExtensionUIRequestListener): () => void {
+		this.extensionUIRequestListeners.push(listener);
+		return () => {
+			const index = this.extensionUIRequestListeners.indexOf(listener);
+			if (index !== -1) {
+				this.extensionUIRequestListeners.splice(index, 1);
+			}
+		};
+	}
+
 	/**
 	 * Get collected stderr output (useful for debugging).
 	 */
@@ -193,8 +231,8 @@ export class RpcClient {
 	 * Returns immediately after sending; use onEvent() to receive streaming events.
 	 * Use waitForIdle() to wait for completion.
 	 */
-	async prompt(message: string, images?: ImageContent[]): Promise<void> {
-		await this.send({ type: "prompt", message, images });
+	async prompt(message: string, images?: ImageContent[], streamingBehavior?: "steer" | "followUp"): Promise<void> {
+		await this.send({ type: "prompt", message, images, streamingBehavior });
 	}
 
 	/**
@@ -239,20 +277,26 @@ export class RpcClient {
 	/**
 	 * Set model by provider and ID.
 	 */
-	async setModel(provider: string, modelId: string): Promise<{ provider: string; id: string }> {
+	async setModel(provider: string, modelId: string): Promise<Model<any>> {
 		const response = await this.send({ type: "set_model", provider, modelId });
 		return this.getData(response);
+	}
+
+	async setScopedModels(
+		scopedModels: Array<{ provider: string; modelId: string; thinkingLevel?: ThinkingLevel }>,
+	): Promise<void> {
+		await this.send({ type: "set_scoped_models", scopedModels });
 	}
 
 	/**
 	 * Cycle to next model.
 	 */
-	async cycleModel(): Promise<{
-		model: { provider: string; id: string };
+	async cycleModel(direction?: "forward" | "backward"): Promise<{
+		model: Model<any>;
 		thinkingLevel: ThinkingLevel;
 		isScoped: boolean;
 	} | null> {
-		const response = await this.send({ type: "cycle_model" });
+		const response = await this.send({ type: "cycle_model", direction });
 		return this.getData(response);
 	}
 
@@ -279,6 +323,11 @@ export class RpcClient {
 		return this.getData(response);
 	}
 
+	async getAvailableThinkingLevels(): Promise<ThinkingLevel[]> {
+		const response = await this.send({ type: "get_available_thinking_levels" });
+		return this.getData<{ levels: ThinkingLevel[] }>(response).levels;
+	}
+
 	/**
 	 * Set steering mode.
 	 */
@@ -291,6 +340,16 @@ export class RpcClient {
 	 */
 	async setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void> {
 		await this.send({ type: "set_follow_up_mode", mode });
+	}
+
+	async getQueue(): Promise<{ steering: string[]; followUp: string[] }> {
+		const response = await this.send({ type: "get_queue" });
+		return this.getData(response);
+	}
+
+	async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
+		const response = await this.send({ type: "clear_queue" });
+		return this.getData(response);
 	}
 
 	/**
@@ -322,11 +381,23 @@ export class RpcClient {
 		await this.send({ type: "abort_retry" });
 	}
 
+	async abortCompaction(): Promise<void> {
+		await this.send({ type: "abort_compaction" });
+	}
+
+	async abortBranchSummary(): Promise<void> {
+		await this.send({ type: "abort_branch_summary" });
+	}
+
+	async setTransport(transport: Transport): Promise<void> {
+		await this.send({ type: "set_transport", transport });
+	}
+
 	/**
 	 * Execute a bash command.
 	 */
-	async bash(command: string): Promise<BashResult> {
-		const response = await this.send({ type: "bash", command });
+	async bash(command: string, options?: { excludeFromContext?: boolean }): Promise<BashResult> {
+		const response = await this.send({ type: "bash", command, excludeFromContext: options?.excludeFromContext });
 		return this.getData(response);
 	}
 
@@ -359,6 +430,31 @@ export class RpcClient {
 	 */
 	async switchSession(sessionPath: string): Promise<{ cancelled: boolean }> {
 		const response = await this.send({ type: "switch_session", sessionPath });
+		return this.getData(response);
+	}
+
+	async getSessionSnapshot(): Promise<RpcSessionSnapshot> {
+		const response = await this.send({ type: "get_session_snapshot" });
+		return this.getData(response);
+	}
+
+	async navigateTree(
+		targetId: string,
+		options?: { summarize?: boolean; customInstructions?: string; replaceInstructions?: boolean; label?: string },
+	): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean }> {
+		const response = await this.send({
+			type: "navigate_tree",
+			targetId,
+			summarize: options?.summarize,
+			customInstructions: options?.customInstructions,
+			replaceInstructions: options?.replaceInstructions,
+			label: options?.label,
+		});
+		return this.getData(response);
+	}
+
+	async setLabel(entryId: string, label: string | undefined): Promise<{ id: string }> {
+		const response = await this.send({ type: "set_label", entryId, label });
 		return this.getData(response);
 	}
 
@@ -417,6 +513,37 @@ export class RpcClient {
 	async getCommands(): Promise<RpcSlashCommand[]> {
 		const response = await this.send({ type: "get_commands" });
 		return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
+	}
+
+	async getShortcuts(keybindings: KeybindingsConfig): Promise<RpcShortcut[]> {
+		const response = await this.send({ type: "get_shortcuts", keybindings });
+		return this.getData<{ shortcuts: RpcShortcut[] }>(response).shortcuts;
+	}
+
+	async runShortcut(shortcut: string, keybindings: KeybindingsConfig): Promise<void> {
+		await this.send({ type: "run_shortcut", shortcut, keybindings });
+	}
+
+	async respondExtensionUI(response: RpcExtensionUIResponse): Promise<void> {
+		const childProcess = this.process;
+		const stdin = this.socket ?? childProcess?.stdin;
+		if (!stdin) {
+			throw new Error("Client not started");
+		}
+		if (this.exitError) {
+			throw this.exitError;
+		}
+		if (childProcess && childProcess.exitCode !== null) {
+			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
+			this.exitError = error;
+			throw error;
+		}
+		if (stdin.destroyed || !stdin.writable) {
+			const error = new Error(`Agent process stdin is not writable. Stderr: ${this.stderr}`);
+			this.exitError = error;
+			throw error;
+		}
+		stdin.write(serializeJsonLine(response));
 	}
 
 	// =========================================================================
@@ -482,6 +609,12 @@ export class RpcClient {
 	private handleLine(line: string): void {
 		try {
 			const data = JSON.parse(line);
+			if (data.type === "extension_ui_request") {
+				for (const listener of this.extensionUIRequestListeners) {
+					void listener(data as RpcExtensionUIRequest);
+				}
+				return;
+			}
 
 			// Check if it's a response to a pending request
 			if (data.type === "response" && data.id && this.pendingRequests.has(data.id)) {
@@ -504,6 +637,30 @@ export class RpcClient {
 		return new Error(`Agent process exited (code=${code} signal=${signal}). Stderr: ${this.stderr}`);
 	}
 
+	private async startSocket(socketPath: string): Promise<void> {
+		const socket = createConnection(socketPath);
+		this.socket = socket;
+		await new Promise<void>((resolve, reject) => {
+			socket.once("connect", resolve);
+			socket.once("error", reject);
+		});
+		socket.on("close", () => {
+			if (this.socket !== socket) return;
+			const error = new Error(`Agent socket closed: ${socketPath}`);
+			this.exitError = error;
+			this.rejectPendingRequests(error);
+		});
+		socket.on("error", (error) => {
+			if (this.socket !== socket) return;
+			const socketError = new Error(`Agent socket error: ${error.message}`);
+			this.exitError = socketError;
+			this.rejectPendingRequests(socketError);
+		});
+		this.stopReadingStdout = attachJsonlLineReader(socket, (line) => {
+			this.handleLine(line);
+		});
+	}
+
 	private rejectPendingRequests(error: Error): void {
 		for (const pending of this.pendingRequests.values()) {
 			pending.reject(error);
@@ -513,14 +670,14 @@ export class RpcClient {
 
 	private async send(command: RpcCommandBody): Promise<RpcResponse> {
 		const childProcess = this.process;
-		const stdin = childProcess?.stdin;
-		if (!childProcess || !stdin) {
+		const stdin = this.socket ?? childProcess?.stdin;
+		if (!stdin) {
 			throw new Error("Client not started");
 		}
 		if (this.exitError) {
 			throw this.exitError;
 		}
-		if (childProcess.exitCode !== null) {
+		if (childProcess && childProcess.exitCode !== null) {
 			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
 			this.exitError = error;
 			throw error;

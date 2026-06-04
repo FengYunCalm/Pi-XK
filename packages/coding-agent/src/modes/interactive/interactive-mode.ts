@@ -59,14 +59,13 @@ import {
 	getShareViewerUrl,
 	VERSION,
 } from "../../config.ts";
-import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
-import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
+import { type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
+import { SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
 import type {
 	AutocompleteProviderFactory,
 	EditorFactory,
 	ExtensionCommandContext,
 	ExtensionContext,
-	ExtensionRunner,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
@@ -94,6 +93,7 @@ import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
 import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import type { RpcExtensionUIRequest, RpcExtensionUIResponse } from "../rpc/rpc-types.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
@@ -122,6 +122,12 @@ import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
+import type {
+	InteractiveExtensionRunner,
+	InteractiveResumeSessionManager,
+	InteractiveRuntimeHost,
+	InteractiveSession,
+} from "./interactive-runtime.ts";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -174,6 +180,12 @@ type CompactionQueuedMessage = {
 	mode: "steer" | "followUp";
 };
 
+type ExtensionUIRequestRuntimeHost = InteractiveRuntimeHost & {
+	setExtensionUIRequestHandler?: (
+		handler?: (request: RpcExtensionUIRequest) => Promise<RpcExtensionUIResponse | undefined>,
+	) => void;
+};
+
 const DEAD_TERMINAL_ERROR_CODES = new Set(["EIO", "EPIPE", "ENOTCONN"]);
 
 function isDeadTerminalError(error: unknown): boolean {
@@ -202,9 +214,8 @@ function quoteIfNeeded(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function formatResumeCommand(sessionManager: SessionManager): string | undefined {
+export function formatResumeCommand(sessionManager: InteractiveResumeSessionManager): string | undefined {
 	if (!process.stdout.isTTY) return undefined;
-	if (!sessionManager.isPersisted()) return undefined;
 
 	const sessionFile = sessionManager.getSessionFile();
 	if (!sessionFile || !fs.existsSync(sessionFile)) return undefined;
@@ -258,7 +269,7 @@ export interface InteractiveModeOptions {
 }
 
 export class InteractiveMode {
-	private runtimeHost: AgentSessionRuntime;
+	private runtimeHost: InteractiveRuntimeHost;
 	private ui: TUI;
 	private chatContainer: Container;
 	private pendingMessagesContainer: Container;
@@ -321,6 +332,7 @@ export class InteractiveMode {
 
 	// Track current bash execution component
 	private bashComponent: BashExecutionComponent | undefined = undefined;
+	private suppressSessionBashEvents = false;
 
 	// Track pending bash components (shown in pending area, moved to chat on submit)
 	private pendingBashComponents: BashExecutionComponent[] = [];
@@ -367,7 +379,7 @@ export class InteractiveMode {
 	private options: InteractiveModeOptions;
 
 	// Convenience accessors
-	private get session(): AgentSession {
+	private get session(): InteractiveSession {
 		return this.runtimeHost.session;
 	}
 	private get agent() {
@@ -380,7 +392,7 @@ export class InteractiveMode {
 		return this.session.settingsManager;
 	}
 
-	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
+	constructor(runtimeHost: InteractiveRuntimeHost, options: InteractiveModeOptions = {}) {
 		this.runtimeHost = runtimeHost;
 		this.options = options;
 		this.runtimeHost.setBeforeSessionInvalidate(() => {
@@ -419,6 +431,7 @@ export class InteractiveMode {
 		// Register themes from resource loader and initialize
 		setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
 		initTheme(this.settingsManager.getTheme(), true);
+		this.bindRemoteExtensionUIRequestHandler();
 	}
 
 	private getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
@@ -454,7 +467,7 @@ export class InteractiveMode {
 		return description ? `[${sourceTag}] ${description}` : `[${sourceTag}]`;
 	}
 
-	private getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
+	private getBuiltInCommandConflictDiagnostics(extensionRunner: InteractiveExtensionRunner): ResourceDiagnostic[] {
 		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 		return extensionRunner
 			.getRegisteredCommands()
@@ -1586,7 +1599,7 @@ export class InteractiveMode {
 		this.setupAutocompleteProvider();
 
 		const extensionRunner = this.session.extensionRunner;
-		this.setupExtensionShortcuts(extensionRunner);
+		await this.setupExtensionShortcuts(extensionRunner);
 		this.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
 		this.showStartupNoticesIfNeeded();
 	}
@@ -1648,8 +1661,8 @@ export class InteractiveMode {
 	/**
 	 * Set up keyboard shortcuts registered by extensions.
 	 */
-	private setupExtensionShortcuts(extensionRunner: ExtensionRunner): void {
-		const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
+	private async setupExtensionShortcuts(extensionRunner: InteractiveExtensionRunner): Promise<void> {
+		const shortcuts = await extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
 		if (shortcuts.size === 0) return;
 
 		// Create a context for shortcut handlers
@@ -2044,6 +2057,57 @@ export class InteractiveMode {
 		};
 	}
 
+	private bindRemoteExtensionUIRequestHandler(): void {
+		(this.runtimeHost as ExtensionUIRequestRuntimeHost).setExtensionUIRequestHandler?.((request) =>
+			this.handleRemoteExtensionUIRequest(request),
+		);
+	}
+
+	private async handleRemoteExtensionUIRequest(
+		request: RpcExtensionUIRequest,
+	): Promise<RpcExtensionUIResponse | undefined> {
+		const uiContext = this.createExtensionUIContext();
+		switch (request.method) {
+			case "select": {
+				const value = await uiContext.select(request.title, request.options, { timeout: request.timeout });
+				return value === undefined
+					? { type: "extension_ui_response", id: request.id, cancelled: true }
+					: { type: "extension_ui_response", id: request.id, value };
+			}
+			case "confirm": {
+				const confirmed = await uiContext.confirm(request.title, request.message, { timeout: request.timeout });
+				return { type: "extension_ui_response", id: request.id, confirmed };
+			}
+			case "input": {
+				const value = await uiContext.input(request.title, request.placeholder, { timeout: request.timeout });
+				return value === undefined
+					? { type: "extension_ui_response", id: request.id, cancelled: true }
+					: { type: "extension_ui_response", id: request.id, value };
+			}
+			case "editor": {
+				const value = await uiContext.editor(request.title, request.prefill);
+				return value === undefined
+					? { type: "extension_ui_response", id: request.id, cancelled: true }
+					: { type: "extension_ui_response", id: request.id, value };
+			}
+			case "notify":
+				uiContext.notify(request.message, request.notifyType);
+				return undefined;
+			case "setStatus":
+				uiContext.setStatus(request.statusKey, request.statusText);
+				return undefined;
+			case "setWidget":
+				uiContext.setWidget(request.widgetKey, request.widgetLines, { placement: request.widgetPlacement });
+				return undefined;
+			case "setTitle":
+				uiContext.setTitle(request.title);
+				return undefined;
+			case "set_editor_text":
+				uiContext.setEditorText(request.text);
+				return undefined;
+		}
+	}
+
 	/**
 	 * Show a selector for extensions.
 	 */
@@ -2420,7 +2484,7 @@ export class InteractiveMode {
 						if (action === "tree") {
 							this.showTreeSelector();
 						} else {
-							this.showUserMessageSelector();
+							void this.showUserMessageSelector();
 						}
 						this.lastEscapeTime = 0;
 					} else {
@@ -2448,7 +2512,9 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.message.dequeue", () => this.handleDequeue());
 		this.defaultEditor.onAction("app.session.new", () => this.handleClearCommand());
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
-		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
+		this.defaultEditor.onAction("app.session.fork", () => {
+			void this.showUserMessageSelector();
+		});
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
 
 		this.defaultEditor.onChange = (text: string) => {
@@ -2535,7 +2601,7 @@ export class InteractiveMode {
 				return;
 			}
 			if (text === "/session") {
-				this.handleSessionCommand();
+				await this.handleSessionCommand();
 				this.editor.setText("");
 				return;
 			}
@@ -2545,12 +2611,12 @@ export class InteractiveMode {
 				return;
 			}
 			if (text === "/hotkeys") {
-				this.handleHotkeysCommand();
+				await this.handleHotkeysCommand();
 				this.editor.setText("");
 				return;
 			}
 			if (text === "/fork") {
-				this.showUserMessageSelector();
+				await this.showUserMessageSelector();
 				this.editor.setText("");
 				return;
 			}
@@ -2863,6 +2929,62 @@ export class InteractiveMode {
 					this.pendingTools.delete(event.toolCallId);
 					this.ui.requestRender();
 				}
+				break;
+			}
+
+			case "bash_execution_start": {
+				if (this.suppressSessionBashEvents) {
+					break;
+				}
+				if (this.bashComponent) {
+					break;
+				}
+				this.bashComponent = new BashExecutionComponent(event.command, this.ui, event.excludeFromContext);
+				if (this.session.isStreaming) {
+					this.pendingMessagesContainer.addChild(this.bashComponent);
+					this.pendingBashComponents.push(this.bashComponent);
+				} else {
+					this.chatContainer.addChild(this.bashComponent);
+				}
+				this.ui.requestRender();
+				break;
+			}
+
+			case "bash_execution_chunk": {
+				if (this.suppressSessionBashEvents) {
+					break;
+				}
+				if (this.bashComponent) {
+					this.bashComponent.appendOutput(event.chunk);
+					this.ui.requestRender();
+				}
+				break;
+			}
+
+			case "bash_execution_end": {
+				if (this.suppressSessionBashEvents) {
+					break;
+				}
+				if (!this.bashComponent) {
+					this.bashComponent = new BashExecutionComponent(event.command, this.ui, event.excludeFromContext);
+					if (event.output) {
+						this.bashComponent.appendOutput(event.output);
+					}
+					if (this.session.isStreaming) {
+						this.pendingMessagesContainer.addChild(this.bashComponent);
+						this.pendingBashComponents.push(this.bashComponent);
+					} else {
+						this.chatContainer.addChild(this.bashComponent);
+					}
+				}
+				this.bashComponent.setComplete(
+					event.exitCode,
+					event.cancelled,
+					event.truncated ? ({ truncated: true, content: event.output } as TruncationResult) : undefined,
+					event.fullOutputPath,
+				);
+				this.bashComponent = undefined;
+				this.ui.requestRender();
 				break;
 			}
 
@@ -4243,8 +4365,8 @@ export class InteractiveMode {
 		});
 	}
 
-	private showUserMessageSelector(): void {
-		const userMessages = this.session.getUserMessagesForForking();
+	private async showUserMessageSelector(): Promise<void> {
+		const userMessages = await this.session.getUserMessagesForForking();
 
 		if (userMessages.length === 0) {
 			this.showStatus("No messages to fork from");
@@ -4424,8 +4546,13 @@ export class InteractiveMode {
 					done();
 					this.ui.requestRender();
 				},
-				(entryId, label) => {
-					this.sessionManager.appendLabelChange(entryId, label);
+				async (entryId, label) => {
+					try {
+						await this.sessionManager.appendLabelChange(entryId, label);
+					} catch (error: unknown) {
+						this.showError(error instanceof Error ? error.message : String(error));
+						throw error;
+					}
 					this.ui.requestRender();
 				},
 				initialSelectedId,
@@ -4986,7 +5113,7 @@ export class InteractiveMode {
 			this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
 			this.setupAutocompleteProvider();
 			const runner = this.session.extensionRunner;
-			this.setupExtensionShortcuts(runner);
+			await this.setupExtensionShortcuts(runner);
 			this.rebuildChatFromMessages();
 			dismissReloadBox(this.editor as Component);
 			this.showLoadedResources({
@@ -5194,7 +5321,7 @@ export class InteractiveMode {
 	}
 
 	private async handleCopyCommand(): Promise<void> {
-		const text = this.session.getLastAssistantText();
+		const text = await this.session.getLastAssistantText();
 		if (!text) {
 			this.showError("No agent messages to copy yet.");
 			return;
@@ -5228,8 +5355,8 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private handleSessionCommand(): void {
-		const stats = this.session.getSessionStats();
+	private async handleSessionCommand(): Promise<void> {
+		const stats = await this.session.getSessionStats();
 		const sessionName = this.sessionManager.getSessionName();
 
 		let info = `${theme.bold("Session Info")}\n\n`;
@@ -5300,7 +5427,7 @@ export class InteractiveMode {
 		return keyDisplayText(action);
 	}
 
-	private handleHotkeysCommand(): void {
+	private async handleHotkeysCommand(): Promise<void> {
 		// Navigation keybindings
 		const cursorUp = this.getEditorKeyDisplay("tui.editor.cursorUp");
 		const cursorDown = this.getEditorKeyDisplay("tui.editor.cursorDown");
@@ -5392,7 +5519,7 @@ export class InteractiveMode {
 
 		// Add extension-registered shortcuts
 		const extensionRunner = this.session.extensionRunner;
-		const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
+		const shortcuts = await extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
 		if (shortcuts.size > 0) {
 			hotkeys += `
 **Extensions**
@@ -5549,6 +5676,7 @@ export class InteractiveMode {
 		this.ui.requestRender();
 
 		try {
+			this.suppressSessionBashEvents = true;
 			const result = await this.session.executeBash(
 				command,
 				(chunk) => {
@@ -5573,6 +5701,8 @@ export class InteractiveMode {
 				this.bashComponent.setComplete(undefined, false);
 			}
 			this.showError(`Bash command failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+		} finally {
+			this.suppressSessionBashEvents = false;
 		}
 
 		this.bashComponent = undefined;
@@ -5602,6 +5732,7 @@ export class InteractiveMode {
 	}
 
 	stop(): void {
+		(this.runtimeHost as ExtensionUIRequestRuntimeHost).setExtensionUIRequestHandler?.(undefined);
 		this.unregisterSignalHandlers();
 		if (this.settingsManager.getShowTerminalProgress()) {
 			this.ui.terminal.setProgress(false);

@@ -367,6 +367,10 @@ export class ExtensionRunner {
 		return this.uiContext;
 	}
 
+	getMode(): ExtensionMode {
+		return this.mode;
+	}
+
 	hasUI(): boolean {
 		return this.uiContext !== noOpUIContext;
 	}

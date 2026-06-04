@@ -285,8 +285,12 @@ export {
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
 export {
+	findRuntimeAttachRecord,
 	InteractiveMode,
 	type InteractiveModeOptions,
+	type InteractiveRuntimeHost,
+	type InteractiveSession,
+	listRuntimeAttachRecords,
 	type ModelInfo,
 	type PrintModeOptions,
 	RpcClient,
@@ -294,7 +298,10 @@ export {
 	type RpcCommand,
 	type RpcEventListener,
 	type RpcResponse,
+	type RpcSessionSnapshot,
 	type RpcSessionState,
+	type RuntimeAttachRecord,
+	RuntimeAttachServer,
 	runPrintMode,
 	runRpcMode,
 } from "./modes/index.ts";

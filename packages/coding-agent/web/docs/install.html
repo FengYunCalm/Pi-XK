@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Install PI WEB</title>
+    <meta name="description" content="Complete installation guide for PI WEB on Linux, macOS, and Windows WSL." />
+    <meta property="og:title" content="Install PI WEB" />
+    <meta property="og:image" content="assets/pi-web-banner.png" />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <script>
+      (() => {
+        const theme = window.localStorage.getItem("pi-web-theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="container nav" aria-label="Main navigation">
+        <a class="brand" href="./" aria-label="PI WEB home">PI WEB</a>
+        <div class="nav-links">
+          <a href="remote-first.html">Remote-first</a>
+          <a href="install.html" aria-current="page">Install</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="faq.html">FAQ</a>
+          <a class="github-link" href="https://github.com/jmfederico/pi-web" aria-label="PI WEB on GitHub">
+            <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M8 0C3.58 0 0 3.67 0 8.2c0 3.63 2.29 6.7 5.47 7.79.4.08.55-.18.55-.4 0-.2-.01-.85-.01-1.55-2.01.38-2.53-.5-2.69-.96-.09-.24-.48-.96-.82-1.16-.28-.16-.68-.56-.01-.57.63-.01 1.08.59 1.23.84.72 1.24 1.87.89 2.33.68.07-.53.28-.89.51-1.09-1.78-.21-3.64-.91-3.64-4.04 0-.89.31-1.62.82-2.2-.08-.2-.36-1.03.08-2.16 0 0 .67-.22 2.2.84A7.4 7.4 0 0 1 8 3.94c.68 0 1.36.09 2 .28 1.53-1.06 2.2-.84 2.2-.84.44 1.13.16 1.96.08 2.16.51.58.82 1.31.82 2.2 0 3.14-1.87 3.83-3.65 4.04.29.26.54.76.54 1.53 0 1.1-.01 1.99-.01 2.27 0 .22.15.49.55.4A8.12 8.12 0 0 0 16 8.2C16 3.67 12.42 0 8 0Z"
+              />
+            </svg>
+            <span>GitHub</span>
+          </a>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle light and dark theme">
+            <span data-theme-icon aria-hidden="true">◐</span>
+            <span data-theme-label>Theme</span>
+          </button>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <p class="eyebrow"><span class="pulse"></span> Installation guide</p>
+          <h1>Get PI WEB running where your agents work.</h1>
+          <p>
+            The recommended setup runs PI WEB as per-user services. PI WEB chooses the native user-service backend for
+            your operating system.
+          </p>
+        </div>
+      </section>
+
+      <section class="section compact">
+        <div class="container doc-layout">
+          <aside class="toc" aria-label="Install page contents">
+            <strong>On this page</strong>
+            <a href="#requirements">Requirements</a>
+            <a href="#user-services">User service install</a>
+            <a href="#one-line">One-line install</a>
+            <a href="#pi-package">Install through Pi</a>
+            <a href="#manual-run">WSL / manual run</a>
+            <a href="#remote-access">Remote access</a>
+            <a href="#manage-services">Manage services</a>
+            <a href="#configure">Configure</a>
+            <a href="#uninstall">Uninstall</a>
+          </aside>
+
+          <div class="doc-content">
+            <section id="requirements">
+              <h2>Requirements</h2>
+              <ul>
+                <li><strong>Node.js 22 or newer</strong> and npm.</li>
+                <li><strong>Pi Coding Agent</strong> installed/configured so the <code>pi</code> command works for your user.</li>
+                <li>A shell login environment that exposes Node, npm, Pi, git, and any tools your agents need.</li>
+                <li>For the automatic installer: a supported per-user service manager.</li>
+              </ul>
+              <div class="callout warning">
+                <strong>Important PATH detail:</strong>
+                PI WEB services run through your login shell with <code>-lc</code>. Setup that only lives in interactive shell
+                files or prompt hooks may not be visible to services. Run <code>pi-web doctor</code> after installing.
+              </div>
+            </section>
+
+            <section id="user-services">
+              <h2>Recommended: run PI WEB as user services</h2>
+              <p>
+                This creates two per-user services: one long-lived session daemon and one web/API service. The CLI chooses
+                the native user-service backend automatically. It is the easiest way to keep sessions available after SSH
+                disconnects, browser restarts, or web/API restarts.
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>User service install</strong>
+                  <button class="copy-button" data-copy="#linux-install">Copy</button>
+                </div>
+                <pre id="linux-install"><code><span class="prompt">$</span> npm install -g @jmfederico/pi-web
+<span class="prompt">$</span> pi-web install
+<span class="prompt">$</span> pi-web doctor</code></pre>
+              </div>
+              <p>Then open <a href="http://127.0.0.1:8504">http://127.0.0.1:8504</a>.</p>
+              <p>On Linux servers, also consider <code>sudo loginctl enable-linger "$USER"</code> so user services survive logout/reboot.</p>
+            </section>
+
+            <section id="one-line">
+              <h2>One-line install</h2>
+              <p>If you prefer a curl pipe, use the repository installer:</p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>One-liner</strong>
+                  <button class="copy-button" data-copy="#one-line-install">Copy</button>
+                </div>
+                <pre id="one-line-install"><code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/install.sh | sh</code></pre>
+              </div>
+            </section>
+
+            <section id="pi-package">
+              <h2>Install through Pi</h2>
+              <p>PI WEB is also published as a Pi package. This exposes a <code>/pi-web</code> command inside Pi.</p>
+              <p>When installed this way, <code>/pi-web install</code> can use PI WEB's package-local service entrypoints, so <code>pi-web-server</code> and <code>pi-web-sessiond</code> do not need to be on your shell <code>PATH</code>.</p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Pi package path</strong>
+                  <button class="copy-button" data-copy="#pi-package-install">Copy</button>
+                </div>
+                <pre id="pi-package-install"><code><span class="prompt">$</span> pi install npm:@jmfederico/pi-web
+
+<span class="comment"># Then inside Pi:</span>
+/pi-web install
+/pi-web status
+/pi-web logs
+/pi-web doctor
+/pi-web version</code></pre>
+              </div>
+            </section>
+
+            <section id="manual-run">
+              <h2>WSL / manual run</h2>
+              <p>
+                On WSL without systemd, containers without a user service manager, or other unsupported environments,
+                install the package and run the daemon and web server yourself.
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Manual processes</strong>
+                  <button class="copy-button" data-copy="#manual-install">Copy</button>
+                </div>
+                <pre id="manual-install"><code><span class="prompt">$</span> npm install -g @jmfederico/pi-web
+
+<span class="comment"># Terminal 1</span>
+<span class="prompt">$</span> pi-web-sessiond
+
+<span class="comment"># Terminal 2</span>
+<span class="prompt">$</span> PI_WEB_PORT=8504 pi-web-server</code></pre>
+              </div>
+              <p>
+                On modern WSL distributions with systemd enabled, the installer can work. Without systemd, use the
+                manual run approach above.
+              </p>
+              <p>
+                From a PI WEB checkout, <code>pi-web install --dev</code> installs the split development services on supported user-service platforms.
+                <code>pi-web uninstall</code> removes both production and development service files; no uninstall flags are needed.
+              </p>
+            </section>
+
+            <section id="remote-access">
+              <h2>Remote access</h2>
+              <p>
+                PI WEB binds to <code>127.0.0.1:8504</code> by default. For a remote server, the safest option is an SSH
+                tunnel:
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>SSH tunnel</strong>
+                  <button class="copy-button" data-copy="#ssh-tunnel">Copy</button>
+                </div>
+                <pre id="ssh-tunnel"><code><span class="prompt">$</span> ssh -L 8504:127.0.0.1:8504 user@your-server
+<span class="comment"># Open http://127.0.0.1:8504 on your local machine</span></code></pre>
+              </div>
+              <div class="callout danger">
+                PI WEB is designed for trusted users and trusted server paths. Do not expose it directly to the public
+                internet. If you use a VPN or private network, bind PI WEB to the server's VPN/private IP, such as a
+                Tailscale/WireGuard/LAN address, and make sure that network policy limits access. Avoid
+                <code>0.0.0.0</code> unless a firewall, VPN, or authenticated reverse proxy strictly controls the port.
+              </div>
+            </section>
+
+            <section id="manage-services">
+              <h2>Manage services</h2>
+              <p><code>pi-web version</code> compares the installed package version with the versions reported by the running Web/UI and session daemon services.</p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Useful commands</strong>
+                  <button class="copy-button" data-copy="#manage-commands">Copy</button>
+                </div>
+                <pre id="manage-commands"><code><span class="prompt">$</span> pi-web status
+<span class="prompt">$</span> pi-web logs
+<span class="prompt">$</span> pi-web restart
+<span class="prompt">$</span> pi-web doctor
+<span class="prompt">$</span> pi-web version
+
+<span class="comment"># From a checkout, install the split development services:</span>
+<span class="prompt">$</span> pi-web install --dev</code></pre>
+              </div>
+            </section>
+
+            <section id="configure">
+              <h2>Configure</h2>
+              <p>
+                The installer writes a config file to <code>~/.config/pi-web/config.json</code>, or to
+                <code>$XDG_CONFIG_HOME/pi-web/config.json</code> when <code>XDG_CONFIG_HOME</code> is set. You can choose a
+                different config file during install with <code>pi-web install --config /path/to/config.json</code>, or at
+                runtime with <code>PI_WEB_CONFIG=/path/to/config.json</code>.
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Default config</strong>
+                  <button class="copy-button" data-copy="#config-example">Copy</button>
+                </div>
+                <pre id="config-example"><code>{
+  "host": "127.0.0.1",
+  "port": 8504,
+  "allowedHosts": []
+}</code></pre>
+              </div>
+              <p>
+                The web server defaults to <code>127.0.0.1:8504</code> and stores PI WEB state in <code>~/.pi-web</code>.
+              </p>
+              <ul>
+                <li><code>PI_WEB_CONFIG</code>: path to a config JSON file. Defaults to <code>~/.config/pi-web/config.json</code>.</li>
+                <li><code>PI_WEB_PORT</code> or <code>PORT</code>: web server port. Overrides the config file.</li>
+                <li><code>PI_WEB_HOST</code>: web server bind host. Overrides the config file. Use <code>127.0.0.1</code> for local/tunnel-only access, or a specific VPN/private-network IP for trusted remote access.</li>
+                <li><code>PI_WEB_DATA_DIR</code>: data directory, default <code>~/.pi-web</code>.</li>
+                <li><code>PI_WEB_SESSIOND_SOCKET</code>: Unix socket path for daemon communication.</li>
+              </ul>
+            </section>
+
+            <section id="uninstall">
+              <h2>Uninstall</h2>
+              <p>
+                <code>pi-web uninstall</code> stops, disables, and removes PI WEB's production and development service files.
+                It does not remove the npm package, config file, or data directory.
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Uninstall services and package</strong>
+                  <button class="copy-button" data-copy="#uninstall-commands">Copy</button>
+                </div>
+                <pre id="uninstall-commands"><code><span class="prompt">$</span> pi-web uninstall
+<span class="prompt">$</span> npm uninstall -g @jmfederico/pi-web</code></pre>
+              </div>
+              <p>Optional cleanup, if you also want to delete PI WEB config and state:</p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Delete config and data</strong>
+                  <button class="copy-button" data-copy="#delete-data-commands">Copy</button>
+                </div>
+                <pre id="delete-data-commands"><code><span class="prompt">$</span> CONFIG_FILE="${PI_WEB_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-web/config.json}"
+<span class="prompt">$</span> DATA_DIR="${PI_WEB_DATA_DIR:-$HOME/.pi-web}"
+<span class="prompt">$</span> rm -f "$CONFIG_FILE"
+<span class="prompt">$</span> rmdir "$(dirname "$CONFIG_FILE")" 2&gt;/dev/null || true
+<span class="prompt">$</span> rm -rf "$DATA_DIR"
+
+<span class="comment"># If you configured a socket outside PI_WEB_DATA_DIR, remove it too:</span>
+<span class="prompt">$</span> [ -z "${PI_WEB_SESSIOND_SOCKET:-}" ] || rm -f "$PI_WEB_SESSIOND_SOCKET"</code></pre>
+              </div>
+              <p>
+                If you installed with <code>pi-web install --config /custom/path.json</code>, delete that custom file instead
+                of the default config path.
+              </p>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <span>PI WEB docs</span>
+        <div class="footer-links">
+          <a href="./">Home</a>
+          <a href="remote-first.html">Remote-first</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="faq.html">FAQ</a>
+          <a href="https://github.com/jmfederico/pi-web">GitHub</a>
+        </div>
+      </div>
+    </footer>
+    <script src="site.js"></script>
+  </body>
+</html>

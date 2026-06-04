@@ -1,0 +1,29 @@
+{
+  "name": "pi-web-mode-internal",
+  "version": "0.78.0",
+  "private": true,
+  "description": "Internal Web mode source for Pi Coding Agent.",
+  "license": "MIT",
+  "author": "Federico Jaramillo Martinez",
+  "type": "module",
+  "scripts": {
+    "dev": "bash -c 'trap \"kill 0\" EXIT; npm run dev:sessiond & npm run dev:web & npm run dev:client & wait'",
+    "dev:sessiond": "tsx watch src/server/sessiond.ts",
+    "dev:web": "bash -c 'set -e; npm run build:plugins; npm run build:plugin-packages; trap \"kill 0\" EXIT; npm run dev:plugins & npm run dev:plugin-packages & tsx watch src/server/index.ts & wait'",
+    "dev:server": "npm run dev:web",
+    "dev:client": "vite --host 0.0.0.0",
+    "dev:plugins": "node scripts/build-plugins.mjs --watch",
+    "dev:plugin-packages": "node scripts/dev-plugin-packages.mjs",
+    "build": "tsc -p tsconfig.build.json && npm run build:plugins && npm run build:plugin-packages && vite build && shx cp package.json dist/package.json",
+    "build:plugins": "tsc -p tsconfig.plugins.json && node scripts/build-plugins.mjs",
+    "build:plugin-packages": "bash -c 'set -e; shopt -s nullglob; for package in plugins/*/package.json; do dir=${package%/package.json}; (cd \"$dir\" && npm run build --if-present); done'",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run --config vitest.config.ts",
+    "verify": "npm run typecheck && npm run lint && npm test",
+    "start": "tsx src/server/index.ts",
+    "start:sessiond": "tsx src/server/sessiond.ts",
+    "clean": "shx rm -rf dist plugins/*/dist"
+  },
+  "piWebInternal": true
+}

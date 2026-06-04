@@ -1,0 +1,16 @@
+export type {
+	CommandOption as ClientCommandOption,
+	CommandResult as ClientCommandResult,
+	FileSuggestion as ClientFileSuggestion,
+	GlobalSessionEvent,
+	MessagePage as ClientMessagePage,
+	Project,
+	SessionActivity as ClientSessionActivity,
+	SessionInfo as ClientSession,
+	SessionModel as ClientSessionModel,
+	SessionStatus as ClientSessionStatus,
+	SessionUiEvent,
+	SlashCommand as ClientCommand,
+	ThinkingLevel as ClientThinkingLevel,
+	Workspace,
+} from "../shared/apiTypes.ts";

@@ -128,6 +128,18 @@ export type AgentSessionEvent =
 			messages: AgentMessage[];
 			willRetry: boolean;
 	  }
+	| { type: "bash_execution_start"; command: string; excludeFromContext?: boolean }
+	| { type: "bash_execution_chunk"; command: string; chunk: string }
+	| {
+			type: "bash_execution_end";
+			command: string;
+			output: string;
+			exitCode: number | undefined;
+			cancelled: boolean;
+			truncated: boolean;
+			fullOutputPath?: string;
+			excludeFromContext?: boolean;
+	  }
 	| {
 			type: "queue_update";
 			steering: readonly string[];
@@ -2576,6 +2588,7 @@ export class AgentSession {
 		options?: { excludeFromContext?: boolean; operations?: BashOperations },
 	): Promise<BashResult> {
 		this._bashAbortController = new AbortController();
+		this._emit({ type: "bash_execution_start", command, excludeFromContext: options?.excludeFromContext });
 
 		// Apply command prefix if configured (e.g., "shopt -s expand_aliases" for alias support)
 		const prefix = this.settingsManager.getShellCommandPrefix();
@@ -2588,12 +2601,25 @@ export class AgentSession {
 				this.sessionManager.getCwd(),
 				options?.operations ?? createLocalBashOperations({ shellPath }),
 				{
-					onChunk,
+					onChunk: (chunk) => {
+						onChunk?.(chunk);
+						this._emit({ type: "bash_execution_chunk", command, chunk });
+					},
 					signal: this._bashAbortController.signal,
 				},
 			);
 
 			this.recordBashResult(command, result, options);
+			this._emit({
+				type: "bash_execution_end",
+				command,
+				output: result.output,
+				exitCode: result.exitCode,
+				cancelled: result.cancelled,
+				truncated: result.truncated,
+				fullOutputPath: result.fullOutputPath,
+				excludeFromContext: options?.excludeFromContext,
+			});
 			return result;
 		} finally {
 			this._bashAbortController = undefined;

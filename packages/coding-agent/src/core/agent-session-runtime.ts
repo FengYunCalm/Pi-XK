@@ -67,6 +67,7 @@ function extractUserMessageText(content: string | Array<{ type: string; text?: s
  */
 export class AgentSessionRuntime {
 	private rebindSession?: (session: AgentSession) => Promise<void>;
+	private readonly rebindSessionListeners = new Set<(session: AgentSession) => void | Promise<void>>();
 	private beforeSessionInvalidate?: () => void;
 	private _session: AgentSession;
 	private _services: AgentSessionServices;
@@ -110,6 +111,13 @@ export class AgentSessionRuntime {
 
 	setRebindSession(rebindSession?: (session: AgentSession) => Promise<void>): void {
 		this.rebindSession = rebindSession;
+	}
+
+	addRebindSessionListener(listener: (session: AgentSession) => void | Promise<void>): () => void {
+		this.rebindSessionListeners.add(listener);
+		return () => {
+			this.rebindSessionListeners.delete(listener);
+		};
 	}
 
 	/**
@@ -179,6 +187,7 @@ export class AgentSessionRuntime {
 		if (this.rebindSession) {
 			await this.rebindSession(this.session);
 		}
+		for (const listener of this.rebindSessionListeners) await listener(this.session);
 		if (withSession) {
 			await withSession(this.session.createReplacedSessionContext());
 		}

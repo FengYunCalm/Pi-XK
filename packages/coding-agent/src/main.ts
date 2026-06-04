@@ -5,6 +5,7 @@
  * createAgentSession() options. The SDK does the heavy lifting.
  */
 
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
 import { ProcessTerminal, setKeybindings, TUI } from "@earendil-works/pi-tui";
@@ -14,7 +15,7 @@ import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
 import { selectSession } from "./cli/session-picker.ts";
-import { ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import { ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, getSessionsDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -41,12 +42,23 @@ import { assertValidSessionId, SessionManager } from "./core/session-manager.ts"
 import { SettingsManager } from "./core/settings-manager.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
-import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
+import {
+	findRuntimeAttachRecord,
+	InteractiveMode,
+	listRuntimeAttachRecords,
+	RemoteInteractiveRuntimeHost,
+	RpcClient,
+	type RuntimeAttachRecord,
+	RuntimeAttachServer,
+	runPrintMode,
+	runRpcMode,
+} from "./modes/index.ts";
 import { ExtensionSelectorComponent } from "./modes/interactive/components/extension-selector.ts";
 import { initTheme, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
 import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
+import { handleWebCommand } from "./web-cli.ts";
 
 /**
  * Read all content from piped stdin.
@@ -197,6 +209,38 @@ async function promptConfirm(message: string): Promise<boolean> {
 	});
 }
 
+function isSessionFileReference(value: string): boolean {
+	return value.includes("/") || value.includes("\\") || value.endsWith(".jsonl");
+}
+
+async function findAttachRecordOrExit(agentDir: string, attachArg: string, cwd: string): Promise<RuntimeAttachRecord> {
+	if (isSessionFileReference(attachArg)) {
+		const sessionFile = resolvePath(attachArg, cwd);
+		const record = await findRuntimeAttachRecord(agentDir, { sessionFile });
+		if (record) return record;
+		console.error(chalk.red(`No live runtime found for session file '${sessionFile}'`));
+		process.exit(1);
+	}
+
+	const exact = await findRuntimeAttachRecord(agentDir, { sessionId: attachArg });
+	if (exact) return exact;
+
+	const prefixMatches = (await listRuntimeAttachRecords(agentDir)).filter((record) =>
+		record.sessionId.startsWith(attachArg),
+	);
+	if (prefixMatches.length === 1) return prefixMatches[0];
+	if (prefixMatches.length > 1) {
+		console.error(chalk.red(`Multiple live runtimes match '${attachArg}':`));
+		for (const record of prefixMatches) {
+			console.error(chalk.dim(`  ${record.sessionId}  ${record.cwd}`));
+		}
+		process.exit(1);
+	}
+
+	console.error(chalk.red(`No live runtime found for session '${attachArg}'`));
+	process.exit(1);
+}
+
 function validateForkFlags(parsed: Args): void {
 	if (!parsed.fork) return;
 
@@ -233,6 +277,29 @@ function validateSessionIdFlags(parsed: Args): void {
 	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(chalk.red(`Error: ${message}`));
+		process.exit(1);
+	}
+}
+
+function validateAttachFlags(parsed: Args, appMode: AppMode): void {
+	if (parsed.attach === undefined) return;
+
+	if (appMode !== "interactive") {
+		console.error(chalk.red("Error: --attach only supports interactive TUI mode"));
+		process.exit(1);
+	}
+
+	const conflictingFlags = [
+		parsed.session ? "--session" : undefined,
+		parsed.sessionId ? "--session-id" : undefined,
+		parsed.fork ? "--fork" : undefined,
+		parsed.continue ? "--continue" : undefined,
+		parsed.resume ? "--resume" : undefined,
+		parsed.noSession ? "--no-session" : undefined,
+	].filter((flag): flag is string => flag !== undefined);
+
+	if (conflictingFlags.length > 0) {
+		console.error(chalk.red(`Error: --attach cannot be combined with ${conflictingFlags.join(", ")}`));
 		process.exit(1);
 	}
 }
@@ -470,6 +537,93 @@ async function promptForMissingSessionCwd(
 	});
 }
 
+async function runAttachedInteractiveMode(
+	parsed: Args,
+	record: RuntimeAttachRecord,
+	sessionDir: string | undefined,
+	agentDir: string,
+	options: MainOptions | undefined,
+	migratedProviders: string[],
+	deprecationWarnings: string[],
+): Promise<void> {
+	const cwd = record.cwd;
+	const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
+	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
+	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
+	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
+	const authStorage = AuthStorage.create();
+	const services = await createAgentSessionServices({
+		cwd,
+		agentDir,
+		authStorage,
+		extensionFlagValues: parsed.unknownFlags,
+		resourceLoaderOptions: {
+			additionalExtensionPaths: resolvedExtensionPaths,
+			additionalSkillPaths: resolvedSkillPaths,
+			additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
+			additionalThemePaths: resolvedThemePaths,
+			noExtensions: parsed.noExtensions,
+			noSkills: parsed.noSkills,
+			noPromptTemplates: parsed.noPromptTemplates,
+			noThemes: parsed.noThemes,
+			noContextFiles: parsed.noContextFiles,
+			systemPrompt: parsed.systemPrompt,
+			appendSystemPrompt: parsed.appendSystemPrompt,
+			extensionFactories: options?.extensionFactories,
+		},
+	});
+	const diagnostics: AgentSessionRuntimeDiagnostic[] = [
+		...services.diagnostics,
+		...collectSettingsDiagnostics(services.settingsManager, "attached runtime"),
+		...services.resourceLoader.getExtensions().errors.map(({ path, error }) => ({
+			type: "error" as const,
+			message: `Failed to load extension "${path}": ${error}`,
+		})),
+	];
+	reportDiagnostics(diagnostics);
+	if (diagnostics.some((diagnostic) => diagnostic.type === "error")) {
+		process.exit(1);
+	}
+
+	configureHttpDispatcher(services.settingsManager.getHttpIdleTimeoutMs());
+	const { initialMessage, initialImages } = await prepareInitialMessage(
+		parsed,
+		services.settingsManager.getImageAutoResize(),
+	);
+	initTheme(services.settingsManager.getTheme(), true);
+	if (deprecationWarnings.length > 0) {
+		await showDeprecationWarnings(deprecationWarnings);
+	}
+
+	const client = new RpcClient({ socketPath: record.socketPath, cwd });
+	let runtimeHost: RemoteInteractiveRuntimeHost | undefined;
+	try {
+		await client.start();
+		runtimeHost = await RemoteInteractiveRuntimeHost.create({
+			client,
+			services,
+			cwd,
+			sessionDir: record.sessionFile ? dirname(record.sessionFile) : (sessionDir ?? getSessionsDir()),
+			sessionFile: record.sessionFile,
+		});
+		const interactiveMode = new InteractiveMode(runtimeHost, {
+			migratedProviders,
+			initialMessage,
+			initialImages,
+			initialMessages: parsed.messages,
+			verbose: parsed.verbose,
+		});
+		await interactiveMode.run();
+	} finally {
+		if (runtimeHost) {
+			await runtimeHost.dispose();
+		} else {
+			await client.stop();
+		}
+		stopThemeWatcher();
+	}
+}
+
 export interface MainOptions {
 	extensionFactories?: ExtensionFactory[];
 }
@@ -484,6 +638,10 @@ export async function main(args: string[], options?: MainOptions) {
 
 	if (process.platform === "win32") {
 		cleanupWindowsSelfUpdateQuarantine(getPackageDir());
+	}
+
+	if (await handleWebCommand(args)) {
+		return;
 	}
 
 	if (await handlePackageCommand(args)) {
@@ -537,6 +695,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 	validateForkFlags(parsed);
 	validateSessionIdFlags(parsed);
+	validateAttachFlags(parsed, appMode);
 
 	// Run migrations (pass cwd for project-local migrations)
 	const { migratedAuthProviders: migratedProviders, deprecationWarnings } = runMigrations(process.cwd());
@@ -557,6 +716,19 @@ export async function main(args: string[], options?: MainOptions) {
 		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
 		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
 		startupSettingsManager.getSessionDir();
+	if (parsed.attach !== undefined) {
+		const attachRecord = await findAttachRecordOrExit(agentDir, parsed.attach, cwd);
+		await runAttachedInteractiveMode(
+			parsed,
+			attachRecord,
+			sessionDir,
+			agentDir,
+			options,
+			migratedProviders,
+			deprecationWarnings,
+		);
+		return;
+	}
 	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
 	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
 	if (missingSessionCwdIssue) {
@@ -743,6 +915,8 @@ export async function main(args: string[], options?: MainOptions) {
 		printTimings();
 		await runRpcMode(runtime);
 	} else if (appMode === "interactive") {
+		const runtimeAttachServer = new RuntimeAttachServer(runtime);
+		await runtimeAttachServer.start();
 		const interactiveMode = new InteractiveMode(runtime, {
 			migratedProviders,
 			modelFallbackMessage,
@@ -756,6 +930,7 @@ export async function main(args: string[], options?: MainOptions) {
 			time("interactiveMode.init");
 			printTimings();
 			interactiveMode.stop();
+			await runtimeAttachServer.dispose();
 			stopThemeWatcher();
 			if (process.stdout.writableLength > 0) {
 				await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
@@ -767,7 +942,11 @@ export async function main(args: string[], options?: MainOptions) {
 		}
 
 		printTimings();
-		await interactiveMode.run();
+		try {
+			await interactiveMode.run();
+		} finally {
+			await runtimeAttachServer.dispose();
+		}
 	} else {
 		printTimings();
 		const exitCode = await runPrintMode(runtime, {

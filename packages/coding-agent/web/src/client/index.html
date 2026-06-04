@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>PI WEB</title>
+    <meta name="theme-color" content="#070912" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --pi-bg: #070912;
+        --pi-surface: #101527;
+        --pi-surface-hover: #151b31;
+        --pi-terminal-bg: #050710;
+        --pi-terminal-text: #f7f4ff;
+        --pi-border: #26304f;
+        --pi-border-muted: #26304f;
+        --pi-text: #f7f4ff;
+        --pi-text-secondary: #aaa4bd;
+        --pi-text-bright: #ffffff;
+        --pi-muted: #aaa4bd;
+        --pi-dim: #817a99;
+        --pi-accent: #7c3cff;
+        --pi-accent-border: #3d4a78;
+        --pi-selection-bg: #151b31;
+        --pi-success: #00f0d8;
+        --pi-success-border: #00f0d8;
+        --pi-success-bg: #071e22;
+        --pi-success-surface: #092d31;
+        --pi-success-ring: #00f0d855;
+        --pi-warning: #ffb000;
+        --pi-warning-border: #ffb000;
+        --pi-warning-surface: #16140d;
+        --pi-danger: #ff4f7b;
+        --pi-purple: #b7a2ff;
+        --pi-purple-border: #7c3cff;
+        --pi-purple-surface: #181026;
+        --pi-overlay: #0008;
+        --pi-shadow-soft: #0006;
+        --pi-shadow: #0008;
+        --pi-shadow-strong: #000b;
+        --pi-bg-overlay-soft: #070912dd;
+        --pi-bg-overlay: #070912e6;
+        --pi-success-bg-overlay: #071e22ee;
+        --pi-terminal-selection: #3d4a78;
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
+      body { min-height: 100dvh; }
+    </style>
+  </head>
+  <body>
+    <pi-web-app></pi-web-app>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

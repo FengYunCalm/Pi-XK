@@ -6,10 +6,13 @@
  */
 
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import type { ImageContent, Model, Transport } from "@earendil-works/pi-ai";
 import type { SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
+import type { ContextUsage } from "../../core/extensions/index.ts";
+import type { KeybindingsConfig } from "../../core/keybindings.ts";
+import type { SessionContext, SessionEntry, SessionHeader, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 
 // ============================================================================
@@ -29,16 +32,24 @@ export type RpcCommand =
 
 	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
-	| { id?: string; type: "cycle_model" }
+	| {
+			id?: string;
+			type: "set_scoped_models";
+			scopedModels: Array<{ provider: string; modelId: string; thinkingLevel?: ThinkingLevel }>;
+	  }
+	| { id?: string; type: "cycle_model"; direction?: "forward" | "backward" }
 	| { id?: string; type: "get_available_models" }
 
 	// Thinking
 	| { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
 	| { id?: string; type: "cycle_thinking_level" }
+	| { id?: string; type: "get_available_thinking_levels" }
 
 	// Queue modes
 	| { id?: string; type: "set_steering_mode"; mode: "all" | "one-at-a-time" }
 	| { id?: string; type: "set_follow_up_mode"; mode: "all" | "one-at-a-time" }
+	| { id?: string; type: "get_queue" }
+	| { id?: string; type: "clear_queue" }
 
 	// Compaction
 	| { id?: string; type: "compact"; customInstructions?: string }
@@ -47,6 +58,11 @@ export type RpcCommand =
 	// Retry
 	| { id?: string; type: "set_auto_retry"; enabled: boolean }
 	| { id?: string; type: "abort_retry" }
+	| { id?: string; type: "abort_compaction" }
+	| { id?: string; type: "abort_branch_summary" }
+
+	// Transport
+	| { id?: string; type: "set_transport"; transport: Transport }
 
 	// Bash
 	| { id?: string; type: "bash"; command: string; excludeFromContext?: boolean }
@@ -61,12 +77,25 @@ export type RpcCommand =
 	| { id?: string; type: "get_fork_messages" }
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
+	| { id?: string; type: "get_session_snapshot" }
+	| {
+			id?: string;
+			type: "navigate_tree";
+			targetId: string;
+			summarize?: boolean;
+			customInstructions?: string;
+			replaceInstructions?: boolean;
+			label?: string;
+	  }
+	| { id?: string; type: "set_label"; entryId: string; label?: string }
 
 	// Messages
 	| { id?: string; type: "get_messages" }
 
 	// Commands (available for invocation via prompt)
-	| { id?: string; type: "get_commands" };
+	| { id?: string; type: "get_commands" }
+	| { id?: string; type: "get_shortcuts"; keybindings: KeybindingsConfig }
+	| { id?: string; type: "run_shortcut"; shortcut: string; keybindings: KeybindingsConfig };
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -90,9 +119,12 @@ export interface RpcSlashCommand {
 
 export interface RpcSessionState {
 	model?: Model<any>;
+	transport: Transport;
+	scopedModels: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	thinkingLevel: ThinkingLevel;
 	isStreaming: boolean;
 	isCompacting: boolean;
+	isBashRunning: boolean;
 	steeringMode: "all" | "one-at-a-time";
 	followUpMode: "all" | "one-at-a-time";
 	sessionFile?: string;
@@ -101,6 +133,23 @@ export interface RpcSessionState {
 	autoCompactionEnabled: boolean;
 	messageCount: number;
 	pendingMessageCount: number;
+	retryAttempt: number;
+	systemPrompt: string;
+	contextUsage?: ContextUsage;
+}
+
+export interface RpcSessionSnapshot {
+	header: SessionHeader | null;
+	entries: SessionEntry[];
+	tree: SessionTreeNode[];
+	leafId: string | null;
+	context: SessionContext;
+}
+
+export interface RpcShortcut {
+	shortcut: string;
+	description?: string;
+	extensionPath: string;
 }
 
 // ============================================================================
@@ -127,6 +176,7 @@ export type RpcResponse =
 			success: true;
 			data: Model<any>;
 	  }
+	| { id?: string; type: "response"; command: "set_scoped_models"; success: true }
 	| {
 			id?: string;
 			type: "response";
@@ -151,10 +201,31 @@ export type RpcResponse =
 			success: true;
 			data: { level: ThinkingLevel } | null;
 	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_available_thinking_levels";
+			success: true;
+			data: { levels: ThinkingLevel[] };
+	  }
 
 	// Queue modes
 	| { id?: string; type: "response"; command: "set_steering_mode"; success: true }
 	| { id?: string; type: "response"; command: "set_follow_up_mode"; success: true }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_queue";
+			success: true;
+			data: { steering: string[]; followUp: string[] };
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "clear_queue";
+			success: true;
+			data: { steering: string[]; followUp: string[] };
+	  }
 
 	// Compaction
 	| { id?: string; type: "response"; command: "compact"; success: true; data: CompactionResult }
@@ -163,6 +234,11 @@ export type RpcResponse =
 	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }
 	| { id?: string; type: "response"; command: "abort_retry"; success: true }
+	| { id?: string; type: "response"; command: "abort_compaction"; success: true }
+	| { id?: string; type: "response"; command: "abort_branch_summary"; success: true }
+
+	// Transport
+	| { id?: string; type: "response"; command: "set_transport"; success: true }
 
 	// Bash
 	| { id?: string; type: "response"; command: "bash"; success: true; data: BashResult }
@@ -189,6 +265,15 @@ export type RpcResponse =
 			data: { text: string | null };
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
+	| { id?: string; type: "response"; command: "get_session_snapshot"; success: true; data: RpcSessionSnapshot }
+	| {
+			id?: string;
+			type: "response";
+			command: "navigate_tree";
+			success: true;
+			data: { editorText?: string; cancelled: boolean; aborted?: boolean };
+	  }
+	| { id?: string; type: "response"; command: "set_label"; success: true; data: { id: string } }
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }
@@ -201,6 +286,14 @@ export type RpcResponse =
 			success: true;
 			data: { commands: RpcSlashCommand[] };
 	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_shortcuts";
+			success: true;
+			data: { shortcuts: RpcShortcut[] };
+	  }
+	| { id?: string; type: "response"; command: "run_shortcut"; success: true }
 
 	// Error response (any command can fail)
 	| { id?: string; type: "response"; command: string; success: false; error: string };

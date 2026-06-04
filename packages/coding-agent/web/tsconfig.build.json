@@ -1,0 +1,21 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "sourceMap": true,
+    "paths": {
+      "@earendil-works/pi-agent-core": ["../../agent/dist/index.d.ts"],
+      "@earendil-works/pi-agent-core/*": ["../../agent/dist/*.d.ts"],
+      "@earendil-works/pi-ai": ["../../ai/dist/index.d.ts"],
+      "@earendil-works/pi-ai/*": ["../../ai/dist/*.d.ts", "../../ai/dist/providers/*.d.ts"],
+      "@earendil-works/pi-coding-agent": ["../dist/index.d.ts"],
+      "@earendil-works/pi-coding-agent/*": ["../dist/*.d.ts", "../dist/core/*.d.ts"],
+      "@earendil-works/pi-tui": ["../../tui/dist/index.d.ts"],
+      "@earendil-works/pi-tui/*": ["../../tui/dist/*.d.ts", "../../tui/dist/components/*.d.ts"]
+    }
+  },
+  "include": ["src/index.ts", "src/cli.ts", "src/server/**/*.ts", "src/sessiond/**/*.ts", "src/shared/**/*.ts", "src/config.ts", "src/piWebVersionReport.ts"],
+  "exclude": ["src/**/*.test.ts", "src/client/**"]
+}

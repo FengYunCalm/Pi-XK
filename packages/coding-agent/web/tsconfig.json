@@ -1,0 +1,55 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
+    "forceConsistentCasingInFileNames": true,
+    "allowUnreachableCode": true,
+    "allowUnusedLabels": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+		"baseUrl": ".",
+		"paths": {
+			"@earendil-works/pi-agent-core": ["../../agent/src/index.ts"],
+			"@earendil-works/pi-agent-core/*": ["../../agent/src/*"],
+			"@earendil-works/pi-ai": ["../../ai/src/index.ts"],
+			"@earendil-works/pi-ai/oauth": ["../../ai/src/oauth.ts"],
+			"@earendil-works/pi-ai/*": ["../../ai/src/*.ts", "../../ai/src/providers/*.ts"],
+			"@earendil-works/pi-coding-agent": ["../src/index.ts"],
+			"@earendil-works/pi-coding-agent/hooks": ["../src/core/hooks/index.ts"],
+			"@earendil-works/pi-coding-agent/*": ["../src/*"],
+			"@earendil-works/pi-coding-agent/web-plugin-api": ["./plugin-api.d.ts"],
+			"@earendil-works/pi-tui": ["../../tui/src/index.ts"],
+			"@earendil-works/pi-tui/*": ["../../tui/src/*"]
+		}
+  },
+	"include": [
+		"../src/utils/highlight-js-lib-index.d.ts",
+		"src/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "extensions/**/*.ts",
+    "pi-web-plugins/**/*.ts",
+    "plugins/**/*.ts",
+    "plugin-api.d.ts"
+  ]
+}

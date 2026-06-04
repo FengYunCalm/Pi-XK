@@ -1,0 +1,61 @@
+import { mergeChatHistory, type RawMessagePage, readChatHistoryCache, writeChatHistoryCache } from "./chatHistoryCache";
+import { normalizeMessages } from "./chatMessages";
+import { applyTranscriptEvent } from "./chatTranscript";
+import type { ChatLine } from "./components/shared";
+import type { SessionUiEvent } from "./sessionSocket";
+
+export interface ChatTranscriptView {
+	messages: ChatLine[];
+	messagePageStart: number;
+	// End offset in the raw transcript. Normalization may coalesce multiple raw
+	// entries into one displayed chat message, especially tool calls/results.
+	messagePageEnd: number;
+	messagePageTotal: number;
+}
+
+export interface ChatHistoryCacheAdapter {
+	read(sessionId: string): RawMessagePage | undefined;
+	write(sessionId: string, page: RawMessagePage): void;
+}
+
+const browserChatHistoryCache: ChatHistoryCacheAdapter = {
+	read: readChatHistoryCache,
+	write: writeChatHistoryCache,
+};
+
+export class ChatTranscriptStore {
+	private readonly rawHistoryPages = new Map<string, RawMessagePage>();
+
+	constructor(private readonly cache: ChatHistoryCacheAdapter = browserChatHistoryCache) {}
+
+	cachedView(sessionId: string): ChatTranscriptView {
+		return transcriptViewFromHistory(this.rawHistoryPage(sessionId));
+	}
+
+	mergeHistory(sessionId: string, page: RawMessagePage): ChatTranscriptView {
+		const history = mergeChatHistory(this.rawHistoryPage(sessionId), page);
+		this.rawHistoryPages.set(sessionId, history);
+		this.cache.write(sessionId, history);
+		return transcriptViewFromHistory(history);
+	}
+
+	applyLiveEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
+		return applyTranscriptEvent(messages, event);
+	}
+
+	rawHistoryPage(sessionId: string): RawMessagePage | undefined {
+		const cached = this.rawHistoryPages.get(sessionId) ?? this.cache.read(sessionId);
+		if (cached !== undefined) this.rawHistoryPages.set(sessionId, cached);
+		return cached;
+	}
+}
+
+export function transcriptViewFromHistory(history: RawMessagePage | undefined): ChatTranscriptView {
+	const start = history?.start ?? 0;
+	return {
+		messages: normalizeMessages(history?.messages ?? []),
+		messagePageStart: start,
+		messagePageEnd: start + (history?.messages.length ?? 0),
+		messagePageTotal: history?.total ?? 0,
+	};
+}

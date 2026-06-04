@@ -1079,7 +1079,7 @@ class SearchLine implements Component {
 class LabelInput implements Component, Focusable {
 	private input: Input;
 	private entryId: string;
-	public onSubmit?: (entryId: string, label: string | undefined) => void;
+	public onSubmit?: (entryId: string, label: string | undefined) => void | Promise<void>;
 	public onCancel?: () => void;
 
 	// Focusable implementation - propagate to input for IME cursor positioning
@@ -1121,7 +1121,7 @@ class LabelInput implements Component, Focusable {
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.select.confirm")) {
 			const value = this.input.getValue().trim();
-			this.onSubmit?.(this.entryId, value || undefined);
+			void Promise.resolve(this.onSubmit?.(this.entryId, value || undefined)).catch(() => undefined);
 		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.onCancel?.();
 		} else {
@@ -1138,7 +1138,7 @@ export class TreeSelectorComponent extends Container implements Focusable {
 	private labelInput: LabelInput | null = null;
 	private labelInputContainer: Container;
 	private treeContainer: Container;
-	private onLabelChangeCallback?: (entryId: string, label: string | undefined) => void;
+	private onLabelChangeCallback?: (entryId: string, label: string | undefined) => void | Promise<void>;
 
 	// Focusable implementation - propagate to labelInput when active for IME cursor positioning
 	private _focused = false;
@@ -1159,7 +1159,7 @@ export class TreeSelectorComponent extends Container implements Focusable {
 		terminalHeight: number,
 		onSelect: (entryId: string) => void,
 		onCancel: () => void,
-		onLabelChange?: (entryId: string, label: string | undefined) => void,
+		onLabelChange?: (entryId: string, label: string | undefined) => void | Promise<void>,
 		initialSelectedId?: string,
 		initialFilterMode?: FilterMode,
 	) {
@@ -1215,9 +1215,9 @@ export class TreeSelectorComponent extends Container implements Focusable {
 
 	private showLabelInput(entryId: string, currentLabel: string | undefined): void {
 		this.labelInput = new LabelInput(entryId, currentLabel);
-		this.labelInput.onSubmit = (id, label) => {
+		this.labelInput.onSubmit = async (id, label) => {
+			await this.onLabelChangeCallback?.(id, label);
 			this.treeList.updateNodeLabel(id, label);
-			this.onLabelChangeCallback?.(id, label);
 			this.hideLabelInput();
 		};
 		this.labelInput.onCancel = () => this.hideLabelInput();
