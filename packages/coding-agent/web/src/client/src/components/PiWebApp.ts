@@ -4,7 +4,6 @@ import { isSessionActive } from "../../../shared/activity";
 import type { AppAction } from "../actions";
 import {
 	type Project,
-	piWebApi,
 	type RealtimeEvent,
 	type SessionInfo,
 	type TerminalCommandRun,
@@ -18,6 +17,7 @@ import { MobileNavigationController, type NavigationSection } from "../appShell/
 import { mainViewClass, PanelCollapseController } from "../appShell/panelCollapseController";
 import { type AppState, initialAppState } from "../appState";
 import { createAppControllers } from "../controllers/appControllers";
+import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { InMemoryTerminalSelectionMemory } from "../controllers/terminalSelection";
 import { canDeleteWorkspace } from "../controllers/workspaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
@@ -78,7 +78,6 @@ import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { appStyles } from "./shared";
 
-const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -123,12 +122,14 @@ export class PiWebApp extends LitElement {
 			? window.matchMedia("(prefers-color-scheme: light)")
 			: undefined;
 	private terminalAutoStartWorkspaceId: string | undefined;
-	private piWebStatusTimer: number | undefined;
 	private workspaceDeletionPollTimer: number | undefined;
 	private refreshingWorkspaceDeletionRuns = false;
 	private readonly handledWorkspaceDeletionRunIds = new Set<string>();
 	private readonly terminalCommandRuns = new TerminalCommandRunRegistry({
 		openTerminal: (workspace, options) => this.openRuntimeTerminal(workspace, options),
+	});
+	private readonly piWebStatus = new PiWebStatusController((patch) => {
+		this.setState(patch);
 	});
 	private routeRestoreInProgress = false;
 	private restoringRouteTerminalId: string | undefined;
@@ -143,7 +144,7 @@ export class PiWebApp extends LitElement {
 	private readonly onFocus = () => {
 		this.appShell.repairViewportPosition();
 		void this.sessions.refreshSelectedSession();
-		void this.refreshPiWebStatus();
+		void this.piWebStatus.refresh();
 		void this.refreshWorkspaceActivity();
 		void this.refreshWorkspaceDeletionRuns();
 	};
@@ -151,7 +152,7 @@ export class PiWebApp extends LitElement {
 		if (document.visibilityState === "visible") {
 			this.appShell.repairViewportPosition();
 			void this.sessions.refreshSelectedSession();
-			void this.refreshPiWebStatus();
+			void this.piWebStatus.refresh();
 			void this.refreshWorkspaceActivity();
 			void this.refreshWorkspaceDeletionRuns();
 		}
@@ -180,10 +181,8 @@ export class PiWebApp extends LitElement {
 		this.systemLightThemeMedia?.addEventListener("change", this.onSystemLightThemeChange);
 		this.applyPreferredTheme(false);
 		this.connectRealtime();
-		this.piWebStatusTimer = window.setInterval(() => {
-			void this.refreshPiWebStatus();
-		}, PI_WEB_STATUS_REFRESH_MS);
-		void this.refreshPiWebStatus();
+		this.piWebStatus.startPolling();
+		void this.piWebStatus.refresh();
 		void this.refreshWorkspaceActivity();
 		void this.loadExternalPlugins();
 		void this.loadProjectsAndRestoreRoute();
@@ -201,8 +200,7 @@ export class PiWebApp extends LitElement {
 		this.sessions.dispose();
 		this.realtime.close();
 		this.git.dispose();
-		if (this.piWebStatusTimer !== undefined) window.clearInterval(this.piWebStatusTimer);
-		this.piWebStatusTimer = undefined;
+		this.piWebStatus.dispose();
 		if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
 		this.workspaceDeletionPollTimer = undefined;
 		super.disconnectedCallback();
@@ -222,14 +220,6 @@ export class PiWebApp extends LitElement {
 		await this.refreshWorkspaceDeletionRuns();
 	}
 
-	private async refreshPiWebStatus(): Promise<void> {
-		try {
-			this.setState({ piWebStatus: await piWebApi.piWebStatus() });
-		} catch (error) {
-			console.warn("Failed to refresh PI WEB status", error);
-		}
-	}
-
 	private async refreshWorkspaceActivity(): Promise<void> {
 		try {
 			await this.activity.refresh();
@@ -244,7 +234,7 @@ export class PiWebApp extends LitElement {
 		try {
 			await Promise.all([
 				this.sessions.refreshSelectedSession(),
-				this.refreshPiWebStatus(),
+				this.piWebStatus.refresh(),
 				this.refreshWorkspaceActivity(),
 				this.refreshWorkspaceDeletionRuns(),
 				this.refreshCurrentWorkspaceSurface(),
