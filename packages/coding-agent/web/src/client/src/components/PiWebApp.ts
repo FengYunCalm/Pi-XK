@@ -4,9 +4,7 @@ import { isSessionActive } from "../../../shared/activity";
 import type { AppAction } from "../actions";
 import {
 	type Project,
-	type RealtimeEvent,
 	type SessionInfo,
-	type TerminalUiEvent,
 	type ThinkingLevel,
 	type Workspace,
 } from "../api";
@@ -16,6 +14,7 @@ import { mainViewClass, PanelCollapseController } from "../appShell/panelCollaps
 import { type AppState, initialAppState } from "../appState";
 import { createAppControllers } from "../controllers/appControllers";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
+import { RealtimeEventController } from "../controllers/realtimeEventController";
 import { TerminalActivityController } from "../controllers/terminalActivityController";
 import { WorkspaceDeletionController } from "../controllers/workspaceDeletionController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
@@ -121,6 +120,17 @@ export class PiWebApp extends LitElement {
 	});
 	private readonly piWebStatus = new PiWebStatusController((patch) => {
 		this.setState(patch);
+	});
+	private readonly realtimeEvents = new RealtimeEventController({
+		applyWorkspaceActivity: (activity) => this.activity.applyWorkspaceActivity(activity),
+		applyGlobalSessionEvent: (event) => this.sessions.applyGlobalEvent(event),
+		applyTerminalEvent: (event) => this.terminalActivity.applyTerminalEvent(event),
+		onSelectedTerminalCleared: () => {
+			this.writeSelectedTerminalToUrl(undefined, { replace: true });
+		},
+		refreshWorkspaceDeletionRuns: () => {
+			void this.workspaceDeletion.refreshRuns();
+		},
 	});
 	private readonly workspaceDeletion = new WorkspaceDeletionController(
 		() => this.state,
@@ -425,7 +435,7 @@ export class PiWebApp extends LitElement {
 	private connectRealtime(): void {
 		this.realtime.connect(
 			(event) => {
-				this.handleRealtimeEvent(event);
+				this.realtimeEvents.handle(event);
 			},
 			() => {
 				const workspace = this.state.selectedWorkspace;
@@ -433,19 +443,6 @@ export class PiWebApp extends LitElement {
 				void this.refreshWorkspaceActivity();
 			},
 		);
-	}
-
-	private handleRealtimeEvent(event: RealtimeEvent): void {
-		if (event.type === "workspace.activity") this.activity.applyWorkspaceActivity(event.activity);
-		else if (isTerminalEvent(event)) {
-			this.applyTerminalEvent(event);
-			if (event.type === "terminal.exited") void this.workspaceDeletion.refreshRuns();
-		} else this.sessions.applyGlobalEvent(event);
-	}
-
-	private applyTerminalEvent(event: TerminalUiEvent): void {
-		if (this.terminalActivity.applyTerminalEvent(event).clearedSelectedTerminal)
-			this.writeSelectedTerminalToUrl(undefined, { replace: true });
 	}
 
 	private async refreshActiveTerminals(workspace: Workspace): Promise<void> {
@@ -1099,10 +1096,6 @@ function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
 
 function isActive(state: Pick<AppState, "status" | "activity">): boolean {
 	return isSessionActive(state.status, state.activity);
-}
-
-function isTerminalEvent(event: RealtimeEvent): event is TerminalUiEvent {
-	return event.type === "terminal.created" || event.type === "terminal.exited" || event.type === "terminal.closed";
 }
 
 function nextFrame(): Promise<void> {
