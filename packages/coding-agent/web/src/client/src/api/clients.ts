@@ -4,6 +4,7 @@ import type {
 	TerminalCommandRun,
 	TerminalCommandRunFilter,
 } from "../../../shared/apiTypes";
+import { addPiWebAuthHeader } from "./auth";
 import { request } from "./http";
 import {
 	arrayOf,
@@ -187,7 +188,9 @@ export const terminalsApi = {
 };
 
 async function getOptionalTerminalCommandRun(runId: string): Promise<TerminalCommandRun | undefined> {
-	const response = await fetch(`/api/terminal-command-runs/${encodeURIComponent(runId)}`);
+	const headers = new Headers();
+	addPiWebAuthHeader(headers);
+	const response = await fetch(`/api/terminal-command-runs/${encodeURIComponent(runId)}`, { headers });
 	if (response.status === 404) return undefined;
 	if (!response.ok) {
 		const body: unknown = await response.json().catch((): unknown => ({}));

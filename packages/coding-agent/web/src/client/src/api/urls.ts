@@ -1,3 +1,5 @@
+import { withPiWebTokenQuery } from "./auth";
+
 export function gitDiffUrl(
 	projectId: string,
 	workspaceId: string,
@@ -27,5 +29,7 @@ export function workspaceImagePreviewUrl(
 	const params = new URLSearchParams();
 	params.set("path", path);
 	if (options?.modifiedAt !== undefined) params.set("v", options.modifiedAt);
-	return `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file/preview?${params.toString()}`;
+	return withPiWebTokenQuery(
+		`/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file/preview?${params.toString()}`,
+	);
 }

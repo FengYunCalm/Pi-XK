@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { browserOpenCommand, parseForegroundOptions, webInterfaceUrl } from "./cli.ts";
+import { browserOpenCommand, parseForegroundOptions, webInterfaceUrl, webInterfaceUrlWithToken } from "./cli.ts";
 
 describe("Pi Web CLI", () => {
 	it("parses foreground options with silent logs by default", () => {
@@ -18,6 +18,12 @@ describe("Pi Web CLI", () => {
 	it("formats a browser-safe local URL", () => {
 		expect(webInterfaceUrl({ host: "0.0.0.0", port: "8504" })).toBe("http://127.0.0.1:8504/");
 		expect(webInterfaceUrl({ host: "::1", port: "8504" })).toBe("http://[::1]:8504/");
+	});
+
+	it("adds an access token to the browser URL when needed", () => {
+		expect(webInterfaceUrlWithToken({ host: "0.0.0.0", port: "8504" }, "secret")).toBe(
+			"http://127.0.0.1:8504/?token=secret",
+		);
 	});
 
 	it("selects platform browser opener commands", () => {

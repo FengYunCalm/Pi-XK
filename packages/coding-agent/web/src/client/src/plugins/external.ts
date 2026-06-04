@@ -1,4 +1,5 @@
 import type { PiWebPlugin, PiWebPluginRegistration } from "./types";
+import { withPiWebTokenQuery } from "../api/auth";
 
 interface PluginManifestEntry {
 	id: string;
@@ -18,7 +19,7 @@ export async function loadExternalPlugins(
 	const registrations: PiWebPluginRegistration[] = [];
 	for (const entry of manifest.plugins) {
 		try {
-			const moduleUrl = new URL(entry.module, new URL(manifestUrl, window.location.href)).toString();
+			const moduleUrl = withPiWebTokenQuery(new URL(entry.module, new URL(manifestUrl, window.location.href)).toString());
 			const module: unknown = await import(/* @vite-ignore */ moduleUrl);
 			const plugin = parsePluginModule(module, moduleUrl);
 			registrations.push({ id: entry.id, plugin });
@@ -30,7 +31,7 @@ export async function loadExternalPlugins(
 }
 
 async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {
-	const response = await fetch(manifestUrl, { cache: "no-store" });
+	const response = await fetch(withPiWebTokenQuery(manifestUrl), { cache: "no-store" });
 	if (response.status === 404) return undefined;
 	if (!response.ok) throw new Error(`Failed to load plugin manifest: ${response.statusText}`);
 	return parseManifest(await response.json());

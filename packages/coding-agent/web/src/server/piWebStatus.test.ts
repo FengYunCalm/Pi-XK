@@ -64,8 +64,7 @@ describe("PI WEB status", () => {
 		expect(status.messages.map((message) => message.id)).toContain("sessiond-stale");
 	});
 
-	it("suggests native systemd commands for local development services", async () => {
-		if (process.platform !== "linux") return;
+	it("does not suggest removed native service commands", async () => {
 		process.env["PI_WEB_SKIP_VERSION_CHECK"] = "1";
 		const home = await tempHome();
 		try {
@@ -75,12 +74,9 @@ describe("PI WEB status", () => {
 
 			const status = await getPiWebStatus(daemon);
 
-			expect(status.commands.restart).toBe("systemctl --user restart pi-web-sessiond.service pi-web-ui-dev.service");
-			expect(status.commands.restartWeb).toBe("systemctl --user restart pi-web-ui-dev.service");
-			expect(status.commands.restartSessiond).toBe("systemctl --user restart pi-web-sessiond.service");
-			expect(status.messages.find((message) => message.id === "sessiond-stale")?.command).toBe(
-				"systemctl --user restart pi-web-sessiond.service",
-			);
+			expect(status.commands).toEqual({});
+			expect(status.messages.find((message) => message.id === "sessiond-stale")?.command).toBeUndefined();
+			expect(JSON.stringify(status)).not.toContain("systemctl");
 		} finally {
 			await rm(home, { recursive: true, force: true });
 		}

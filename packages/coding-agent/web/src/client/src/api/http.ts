@@ -1,6 +1,9 @@
+import { addPiWebAuthHeader } from "./auth";
+
 export async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit): Promise<T> {
 	const headers = new Headers(init?.headers);
 	if (init?.body !== undefined) headers.set("content-type", "application/json");
+	addPiWebAuthHeader(headers);
 	const response = await fetch(url, { ...init, headers });
 	if (!response.ok) {
 		const body: unknown = await response.json().catch((): unknown => ({}));

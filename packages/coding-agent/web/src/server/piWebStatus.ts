@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -19,50 +18,9 @@ import { parsePiWebComponentStatus } from "../shared/piWebStatusParsing.ts";
 
 const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const PI_WEB_PACKAGE_NAME = PI_PACKAGE_NAME;
-const PI_NPM_SOURCE = "npm:pi";
 const DEFAULT_VERSION = "0.0.0-dev";
 const LATEST_RELEASE_CACHE_MS = 6 * 60 * 60 * 1000;
 const VERSION_CHECK_TIMEOUT_MS = 5000;
-
-type ServiceId = "sessiond" | "web" | "uiDev";
-type NativeServiceBackendKind = "systemd" | "launchd";
-
-interface NativeServiceRef {
-	id: ServiceId;
-	systemdName: string;
-	launchdLabel: string;
-	launchdPlistName: string;
-}
-
-interface NativeServiceCommands {
-	restart?: string;
-	restartWeb?: string;
-	restartSessiond?: string;
-	status?: string;
-}
-
-const serviceRefs: Record<ServiceId, NativeServiceRef> = {
-	sessiond: {
-		id: "sessiond",
-		systemdName: "pi-web-sessiond.service",
-		launchdLabel: "com.pi-web.sessiond",
-		launchdPlistName: "com.pi-web.sessiond.plist",
-	},
-	web: {
-		id: "web",
-		systemdName: "pi-web.service",
-		launchdLabel: "com.pi-web.web",
-		launchdPlistName: "com.pi-web.web.plist",
-	},
-	uiDev: {
-		id: "uiDev",
-		systemdName: "pi-web-ui-dev.service",
-		launchdLabel: "com.pi-web.ui-dev",
-		launchdPlistName: "com.pi-web.ui-dev.plist",
-	},
-};
-
-const startServiceOrder: ServiceId[] = ["sessiond", "web", "uiDev"];
 
 interface PackageInfo {
 	name: string;
@@ -310,142 +268,8 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
 	return version;
 }
 
-function commandsFor(components: PiWebStatusResponse["components"]): PiWebStatusResponse["commands"] {
-	const installation = preferredInstallation(components);
-	const serviceCommands = nativeServiceCommands();
-	const cliCommands = piWebCliCommands();
-	const restart = restartCommandFor(installation, serviceCommands, cliCommands);
-	const restartWeb = serviceCommands.restartWeb ?? cliCommands.restart;
-	const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
-	const status = serviceCommands.status ?? cliCommands.status;
-	const update = updateCommandFor(installation, restart);
-
-	return {
-		...(update === undefined ? {} : { update }),
-		...(restart === undefined ? {} : { restart }),
-		...(restartWeb === undefined ? {} : { restartWeb }),
-		...(restartSessiond === undefined ? {} : { restartSessiond }),
-		...(status === undefined ? {} : { status }),
-	};
-}
-
-function preferredInstallation(components: PiWebStatusResponse["components"]): PiWebInstallationInfo | undefined {
-	const web = components.web.installation;
-	const sessiond = components.sessiond.installation;
-	if (web?.kind === "local" || sessiond?.kind === "local") return web?.kind === "local" ? web : sessiond;
-	return web ?? sessiond;
-}
-
-function piWebCliCommands(): NativeServiceCommands {
-	if (hasCommand("pi")) return { restart: "pi web restart", status: "pi web status" };
+function commandsFor(_components: PiWebStatusResponse["components"]): PiWebStatusResponse["commands"] {
 	return {};
-}
-
-function restartCommandFor(
-	installation: PiWebInstallationInfo | undefined,
-	serviceCommands: NativeServiceCommands,
-	cliCommands: NativeServiceCommands,
-): string | undefined {
-	if (installation?.kind === "local" || installation?.kind === "pi-package")
-		return serviceCommands.restart ?? cliCommands.restart;
-	return cliCommands.restart ?? serviceCommands.restart;
-}
-
-function updateCommandFor(
-	installation: PiWebInstallationInfo | undefined,
-	restartCommand: string | undefined,
-): string | undefined {
-	if (restartCommand === undefined) return undefined;
-	if (installation?.kind === "pi-package") {
-		if (!hasCommand("pi")) return undefined;
-		return `pi update ${installation.source ?? PI_NPM_SOURCE} && ${restartCommand}`;
-	}
-	if (installation?.kind === "local" && installation.path !== undefined) {
-		if (!hasCommand("npm") || !isGitCheckoutWithUpstream(installation.path)) return undefined;
-		return `cd ${shellQuote(installation.path)} && git pull --ff-only && npm install && npm run build && ${restartCommand}`;
-	}
-	if (installation?.kind !== "npm-global" || !hasCommand("npm")) return undefined;
-	if (hasCommand("pi")) return `pi update pi && ${restartCommand}`;
-	return `npm install -g ${PI_PACKAGE_NAME} && ${restartCommand}`;
-}
-
-function nativeServiceCommands(): NativeServiceCommands {
-	const backend = nativeServiceBackend();
-	if (backend === undefined) return {};
-	const installed = installedServiceIds(backend);
-	if (installed.size === 0) return {};
-	const web = installedServiceRefs(installed, ["web", "uiDev"]);
-	const sessiond = installedServiceRefs(installed, ["sessiond"]);
-	const restartable = web.length === 0 ? [] : installedServiceRefs(installed);
-	const status = installedServiceRefs(installed);
-	return {
-		...(restartable.length === 0 ? {} : { restart: restartNativeServicesCommand(backend, restartable) }),
-		...(web.length === 0 ? {} : { restartWeb: restartNativeServicesCommand(backend, web) }),
-		...(sessiond.length === 0 ? {} : { restartSessiond: restartNativeServicesCommand(backend, sessiond) }),
-		...(status.length === 0 ? {} : { status: statusNativeServicesCommand(backend, status) }),
-	};
-}
-
-function nativeServiceBackend(): NativeServiceBackendKind | undefined {
-	if (process.platform === "linux" && hasCommand("systemctl")) return "systemd";
-	if (process.platform === "darwin" && hasCommand("launchctl")) return "launchd";
-	return undefined;
-}
-
-function installedServiceIds(backend: NativeServiceBackendKind): Set<ServiceId> {
-	return new Set(startServiceOrder.filter((id) => existsSync(serviceFilePath(backend, serviceRefs[id]))));
-}
-
-function installedServiceRefs(
-	installed: Set<ServiceId>,
-	candidates: ServiceId[] = startServiceOrder,
-): NativeServiceRef[] {
-	return startServiceOrder.filter((id) => candidates.includes(id) && installed.has(id)).map((id) => serviceRefs[id]);
-}
-
-function serviceFilePath(backend: NativeServiceBackendKind, ref: NativeServiceRef): string {
-	return backend === "systemd"
-		? join(systemdServiceDir(), ref.systemdName)
-		: join(launchdServiceDir(), ref.launchdPlistName);
-}
-
-function systemdServiceDir(): string {
-	return join(homedir(), ".config", "systemd", "user");
-}
-
-function launchdServiceDir(): string {
-	return join(homedir(), "Library", "LaunchAgents");
-}
-
-function restartNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
-	if (backend === "systemd") return `systemctl --user restart ${refs.map((ref) => ref.systemdName).join(" ")}`;
-	return refs.map((ref) => `launchctl kickstart -k gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
-}
-
-function statusNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
-	if (backend === "systemd") return `systemctl --user status ${refs.map((ref) => ref.systemdName).join(" ")}`;
-	return refs.map((ref) => `launchctl print gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
-}
-
-function isGitCheckoutWithUpstream(path: string): boolean {
-	return (
-		hasCommand("git") &&
-		commandSucceeds("git", ["-C", path, "rev-parse", "--is-inside-work-tree"]) &&
-		commandSucceeds("git", ["-C", path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-	);
-}
-
-function hasCommand(command: string): boolean {
-	return commandSucceeds("/usr/bin/env", ["sh", "-c", `command -v ${command}`]);
-}
-
-function commandSucceeds(command: string, args: string[]): boolean {
-	const result = spawnSync(command, args, { encoding: "utf8" });
-	return result.status === 0;
-}
-
-function shellQuote(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function buildMessages(

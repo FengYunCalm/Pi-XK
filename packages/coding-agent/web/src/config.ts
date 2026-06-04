@@ -6,6 +6,7 @@ export interface PiWebConfig {
 	host?: string;
 	port?: number;
 	allowedHosts?: string[] | true;
+	token?: string;
 }
 
 export interface LoadedPiWebConfig {
@@ -61,6 +62,7 @@ export function effectivePiWebConfig(options: LoadOptions = {}): LoadedPiWebConf
 	const host = env["PI_WEB_HOST"];
 	const port = env["PI_WEB_PORT"] ?? env["PORT"];
 	const allowedHosts = env["PI_WEB_ALLOWED_HOSTS"];
+	const token = env["PI_WEB_TOKEN"];
 
 	return {
 		...loaded,
@@ -71,6 +73,7 @@ export function effectivePiWebConfig(options: LoadOptions = {}): LoadedPiWebConf
 			...(allowedHosts !== undefined && allowedHosts !== ""
 				? { allowedHosts: parseAllowedHostsEnv(allowedHosts) }
 				: {}),
+			...(token !== undefined && token !== "" ? { token } : {}),
 		},
 	};
 }
@@ -80,6 +83,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
 		...(value["host"] !== undefined ? { host: parseString(value["host"], "host", path) } : {}),
 		...(value["port"] !== undefined ? { port: parsePort(value["port"], "port", path) } : {}),
 		...(value["allowedHosts"] !== undefined ? { allowedHosts: parseAllowedHosts(value["allowedHosts"], path) } : {}),
+		...(value["token"] !== undefined ? { token: parseString(value["token"], "token", path) } : {}),
 	};
 }
 

@@ -1,9 +1,11 @@
+import { withPiWebTokenQuery } from "./auth";
+
 export function sessionEvents(sessionId: string): WebSocket {
-	return new WebSocket(`${webSocketBaseUrl()}/api/sessions/${sessionId}/events`);
+	return new WebSocket(withPiWebTokenQuery(`${webSocketBaseUrl()}/api/sessions/${sessionId}/events`));
 }
 
 export function globalSessionEvents(): WebSocket {
-	return new WebSocket(`${webSocketBaseUrl()}/api/sessions/events`);
+	return new WebSocket(withPiWebTokenQuery(`${webSocketBaseUrl()}/api/sessions/events`));
 }
 
 export function terminalSocket(
@@ -17,12 +19,14 @@ export function terminalSocket(
 			? ""
 			: `?cols=${encodeURIComponent(String(initialSize.cols))}&rows=${encodeURIComponent(String(initialSize.rows))}`;
 	return new WebSocket(
-		`${webSocketBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/socket${sizeQuery}`,
+		withPiWebTokenQuery(
+			`${webSocketBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/socket${sizeQuery}`,
+		),
 	);
 }
 
 export function realtimeEvents(): WebSocket {
-	return new WebSocket(`${webSocketBaseUrl()}/api/events`);
+	return new WebSocket(withPiWebTokenQuery(`${webSocketBaseUrl()}/api/events`));
 }
 
 function webSocketBaseUrl(): string {

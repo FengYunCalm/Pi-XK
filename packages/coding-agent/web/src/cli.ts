@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { randomBytes } from "node:crypto";
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultPiWebConfigPath, examplePiWebConfig } from "./config.ts";
@@ -61,6 +63,12 @@ export function webInterfaceUrl(options: Pick<ForegroundOptions, "host" | "port"
 	return `http://${formattedHost}:${options.port}/`;
 }
 
+export function webInterfaceUrlWithToken(options: Pick<ForegroundOptions, "host" | "port">, token?: string): string {
+	const url = new URL(webInterfaceUrl(options));
+	if (token !== undefined) url.searchParams.set("token", token);
+	return url.toString();
+}
+
 export function browserOpenCommand(url: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
 	if (platform === "darwin") return { command: "open", args: [url] };
 	if (platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
@@ -89,26 +97,42 @@ async function writeInitialConfig(options: ForegroundOptions): Promise<string> {
 async function runForeground(args: string[]): Promise<void> {
 	const options = parseForegroundOptions(args);
 	const configPath = await writeInitialConfig(options);
-	const url = webInterfaceUrl(options);
+	const token = process.env["PI_WEB_TOKEN"] ?? (isLocalHost(options.host) ? undefined : generateAccessToken());
+	const url = webInterfaceUrlWithToken(options, token);
+	const sessiondRuntimeDir = await mkdtemp(join(tmpdir(), "pi-web-sessiond-"));
 	const env = {
 		...process.env,
 		PI_WEB_CONFIG: configPath,
 		PI_WEB_HOST: options.host,
 		PI_WEB_PORT: options.port,
+		PI_WEB_SESSIOND_SOCKET: join(sessiondRuntimeDir, "sessiond.sock"),
+		...(token === undefined ? {} : { PI_WEB_TOKEN: token }),
 	};
 	const stdio: StdioOptions = options.printLogs ? "inherit" : "ignore";
 	const sessiond = spawn(process.execPath, [packageEntrypointPath("sessiond")], { stdio, env });
 	const web = spawn(process.execPath, [packageEntrypointPath("server")], { stdio, env });
 	const processes = [sessiond, web];
 	try {
-		await waitForWebReady(url, processes);
-	} catch (error) {
-		stopProcesses(processes);
-		throw error;
+		try {
+			await waitForWebReady(url, processes);
+		} catch (error) {
+			stopProcesses(processes);
+			throw error;
+		}
+		openBrowser(url);
+		console.log(`Web interface: ${url}`);
+		process.exitCode = await waitForForegroundProcesses(processes);
+	} finally {
+		await rm(sessiondRuntimeDir, { recursive: true, force: true });
 	}
-	openBrowser(url);
-	console.log(`Web interface: ${url}`);
-	process.exitCode = await waitForForegroundProcesses(processes);
+}
+
+function generateAccessToken(): string {
+	return randomBytes(24).toString("base64url");
+}
+
+function isLocalHost(host: string): boolean {
+	return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
 }
 
 function openBrowser(url: string): void {
@@ -123,7 +147,7 @@ function openBrowser(url: string): void {
 }
 
 async function waitForWebReady(url: string, processes: ChildProcess[], timeoutMs = 10_000): Promise<void> {
-	const statusUrl = new URL("/api/pi-web/version", url).toString();
+	const statusUrl = statusProbeUrl(url);
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const exited = processes.find((child) => child.exitCode !== null || child.signalCode !== null);
@@ -140,6 +164,14 @@ async function waitForWebReady(url: string, processes: ChildProcess[], timeoutMs
 		await sleep(150);
 	}
 	throw new Error("Timed out waiting for Pi Web to start. Re-run with `pi web --print-logs` to inspect startup logs.");
+}
+
+function statusProbeUrl(url: string): string {
+	const source = new URL(url);
+	const statusUrl = new URL("/api/pi-web/version", source);
+	const token = source.searchParams.get("token");
+	if (token !== null) statusUrl.searchParams.set("token", token);
+	return statusUrl.toString();
 }
 
 function stopProcesses(processes: ChildProcess[]): void {

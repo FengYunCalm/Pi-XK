@@ -83,6 +83,75 @@ describe("buildApp", () => {
 		expect(missingResponse.statusCode).toBe(404);
 	});
 
+	it("requires the configured access token for API routes", async () => {
+		const secureApp = await buildApp({
+			projects: new ProjectService(new ProjectStore(join(tempDir, "secure-projects.json"))),
+			workspaces: new WorkspaceService(),
+			clientDist: false,
+			logger: false,
+			security: { token: "secret" },
+		});
+		try {
+			const rejected = await secureApp.inject({ method: "GET", url: "/api/projects" });
+			expect(rejected.statusCode).toBe(401);
+
+			const accepted = await secureApp.inject({
+				method: "GET",
+				url: "/api/projects",
+				headers: { "x-pi-web-token": "secret" },
+			});
+			expect(accepted.statusCode).toBe(200);
+			expect(accepted.json<Project[]>()).toEqual([]);
+		} finally {
+			await secureApp.close();
+		}
+	});
+
+	it("accepts query tokens and persists them for browser requests", async () => {
+		const secureApp = await buildApp({
+			piWebPlugins: {
+				manifest: () => Promise.resolve({ plugins: [] }),
+				readAsset: () => Promise.resolve(undefined),
+			},
+			clientDist: false,
+			logger: false,
+			security: { token: "secret" },
+		});
+		try {
+			const response = await secureApp.inject({ method: "GET", url: "/pi-web-plugins/manifest.json?token=secret" });
+
+			expect(response.statusCode).toBe(200);
+			expect(response.headers["set-cookie"]).toContain("pi_web_token=secret");
+		} finally {
+			await secureApp.close();
+		}
+	});
+
+	it("rejects cross-origin API requests when allowed hosts are restricted", async () => {
+		const secureApp = await buildApp({
+			clientDist: false,
+			logger: false,
+			security: { token: "secret", allowedHosts: ["good.test"] },
+		});
+		try {
+			const rejected = await secureApp.inject({
+				method: "GET",
+				url: "/api/projects",
+				headers: { host: "good.test", origin: "http://evil.test", "x-pi-web-token": "secret" },
+			});
+			expect(rejected.statusCode).toBe(403);
+
+			const accepted = await secureApp.inject({
+				method: "GET",
+				url: "/api/projects",
+				headers: { host: "good.test", origin: "http://good.test", "x-pi-web-token": "secret" },
+			});
+			expect(accepted.statusCode).toBe(200);
+		} finally {
+			await secureApp.close();
+		}
+	});
+
 	it("returns stable errors for invalid project requests", async () => {
 		const addResponse = await app.inject({
 			method: "POST",
