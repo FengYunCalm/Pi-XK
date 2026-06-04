@@ -31,11 +31,10 @@ import type {
 	QualifiedThemeContribution,
 	QualifiedThemePairContribution,
 	QualifiedWorkspacePanelContribution,
-	TerminalCommandRunsInternalRuntime,
 	WorkspacePanelContext,
 } from "../plugins/types";
 import { type AppRoute, readRoute, writeRoute } from "../route";
-import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
+import { TerminalCommandRunRegistry } from "../runtime/terminalCommandRunRegistry";
 import { RealtimeSocket } from "../sessionSocket";
 import {
 	applyPiWebTheme,
@@ -128,7 +127,9 @@ export class PiWebApp extends LitElement {
 	private workspaceDeletionPollTimer: number | undefined;
 	private refreshingWorkspaceDeletionRuns = false;
 	private readonly handledWorkspaceDeletionRunIds = new Set<string>();
-	private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
+	private readonly terminalCommandRuns = new TerminalCommandRunRegistry({
+		openTerminal: (workspace, options) => this.openRuntimeTerminal(workspace, options),
+	});
 	private routeRestoreInProgress = false;
 	private restoringRouteTerminalId: string | undefined;
 	private readonly plugins = createBuiltinPluginRegistry();
@@ -378,16 +379,8 @@ export class PiWebApp extends LitElement {
 		this.openWorkspaceTool("core:workspace.terminal");
 	}
 
-	private terminalCommandRunsForOrigin(origin: string): TerminalCommandRunsInternalRuntime {
-		const existing = this.terminalCommandRunRuntimes.get(origin);
-		if (existing !== undefined) return existing;
-		const runtime = createTerminalCommandRunsRuntime(origin, {
-			openTerminal: (workspace, options) => {
-				void this.openRuntimeTerminal(workspace, options);
-			},
-		});
-		this.terminalCommandRunRuntimes.set(origin, runtime);
-		return runtime;
+	private terminalCommandRunsForOrigin(origin: string) {
+		return this.terminalCommandRuns.forOrigin(origin);
 	}
 
 	private async openRuntimeTerminal(
