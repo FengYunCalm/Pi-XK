@@ -11,6 +11,7 @@ import { AppShellController } from "../appShell/appShellController";
 import { MobileNavigationController, type NavigationSection } from "../appShell/navigationState";
 import { mainViewClass, PanelCollapseController } from "../appShell/panelCollapseController";
 import { type AppState, initialAppState } from "../appState";
+import { AppLifecycleRefreshController } from "../controllers/appLifecycleRefreshController";
 import { createAppControllers } from "../controllers/appControllers";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { RealtimeEventController } from "../controllers/realtimeEventController";
@@ -178,25 +179,27 @@ export class PiWebApp extends LitElement {
 	private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
 	@state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
 	@state() private isRefreshingApp = false;
+	private readonly appLifecycleRefresh = new AppLifecycleRefreshController({
+		isRefreshing: () => this.isRefreshingApp,
+		setRefreshing: (refreshing) => {
+			this.isRefreshingApp = refreshing;
+		},
+		repairViewportPosition: () => this.appShell.repairViewportPosition(),
+		refreshSelectedSession: () => this.sessions.refreshSelectedSession(),
+		refreshPiWebStatus: () => this.piWebStatus.refresh(),
+		refreshWorkspaceActivity: () => this.activity.refresh(),
+		refreshWorkspaceDeletionRuns: () => this.workspaceDeletion.refreshRuns(),
+		refreshWorkspaceSurface: () => this.workspaceSurface.refreshCurrent(),
+	});
 	private readonly onPopState = () => void this.withChatScrollTransition(() => this.routeRestore.restore(false));
 	private readonly onPageShow = () => {
-		this.appShell.repairViewportPosition();
+		this.appLifecycleRefresh.handlePageShow();
 	};
 	private readonly onFocus = () => {
-		this.appShell.repairViewportPosition();
-		void this.sessions.refreshSelectedSession();
-		void this.piWebStatus.refresh();
-		void this.refreshWorkspaceActivity();
-		void this.workspaceDeletion.refreshRuns();
+		this.appLifecycleRefresh.handleFocus();
 	};
 	private readonly onVisibilityChange = () => {
-		if (document.visibilityState === "visible") {
-			this.appShell.repairViewportPosition();
-			void this.sessions.refreshSelectedSession();
-			void this.piWebStatus.refresh();
-			void this.refreshWorkspaceActivity();
-			void this.workspaceDeletion.refreshRuns();
-		}
+		this.appLifecycleRefresh.handleVisibilityChange(document.visibilityState);
 	};
 	private readonly onSystemLightThemeChange = () => {
 		if (this.themePreference.auto) this.applyPreferredTheme(false);
@@ -224,7 +227,7 @@ export class PiWebApp extends LitElement {
 		this.connectRealtime();
 		this.piWebStatus.startPolling();
 		void this.piWebStatus.refresh();
-		void this.refreshWorkspaceActivity();
+		void this.appLifecycleRefresh.refreshWorkspaceActivity();
 		void this.loadExternalPlugins();
 		void this.loadProjectsAndRestoreRoute();
 	}
@@ -260,28 +263,8 @@ export class PiWebApp extends LitElement {
 		await this.workspaceDeletion.refreshRuns();
 	}
 
-	private async refreshWorkspaceActivity(): Promise<void> {
-		try {
-			await this.activity.refresh();
-		} catch (error) {
-			console.warn("Failed to refresh workspace activity", error);
-		}
-	}
-
 	private async refreshAppData(): Promise<void> {
-		if (this.isRefreshingApp) return;
-		this.isRefreshingApp = true;
-		try {
-			await Promise.all([
-				this.sessions.refreshSelectedSession(),
-				this.piWebStatus.refresh(),
-				this.refreshWorkspaceActivity(),
-				this.workspaceDeletion.refreshRuns(),
-				this.workspaceSurface.refreshCurrent(),
-			]);
-		} finally {
-			this.isRefreshingApp = false;
-		}
+		await this.appLifecycleRefresh.refreshAppData();
 	}
 
 	private hardReloadApp(): void {
@@ -387,7 +370,7 @@ export class PiWebApp extends LitElement {
 			() => {
 				const workspace = this.state.selectedWorkspace;
 				if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
-				void this.refreshWorkspaceActivity();
+				void this.appLifecycleRefresh.refreshWorkspaceActivity();
 			},
 		);
 	}
