@@ -1,6 +1,5 @@
 import { html, LitElement } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { isSessionActive } from "../../../shared/activity";
 import type { AppAction } from "../actions";
 import {
 	type Project,
@@ -17,6 +16,7 @@ import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { RealtimeEventController } from "../controllers/realtimeEventController";
 import { TerminalActivityController } from "../controllers/terminalActivityController";
 import { WorkspaceDeletionController } from "../controllers/workspaceDeletionController";
+import { WorkspaceSurfaceController } from "../controllers/workspaceSurfaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { createBuiltinPluginRegistry } from "../plugins/builtin";
@@ -114,7 +114,6 @@ export class PiWebApp extends LitElement {
 		typeof window !== "undefined" && "matchMedia" in window
 			? window.matchMedia("(prefers-color-scheme: light)")
 			: undefined;
-	private terminalAutoStartWorkspaceId: string | undefined;
 	private readonly terminalCommandRuns = new TerminalCommandRunRegistry({
 		openTerminal: (workspace, options) => this.openRuntimeTerminal(workspace, options),
 	});
@@ -142,6 +141,22 @@ export class PiWebApp extends LitElement {
 			mainWorkspaceForProject: (projectId) => this.mainWorkspaceForProject(projectId),
 			refreshAfterWorkspaceDeleted: (projectId, workspaceId) =>
 				this.workspaces.refreshAfterWorkspaceDeleted(projectId, workspaceId),
+		},
+	);
+	private readonly workspaceSurface = new WorkspaceSurfaceController(
+		() => this.state,
+		(patch) => {
+			this.setState(patch);
+		},
+		(options) => {
+			this.updateUrl(options);
+		},
+		{
+			refreshFiles: () => this.files.refreshFiles(),
+			restoreFile: (path) => this.files.restoreFile(path),
+			refreshGit: () => this.git.refreshGit(),
+			updateGitPolling: () => this.git.updatePolling(),
+			refreshActiveTerminals: (workspace) => this.refreshActiveTerminals(workspace),
 		},
 	);
 	private routeRestoreInProgress = false;
@@ -249,23 +264,11 @@ export class PiWebApp extends LitElement {
 				this.piWebStatus.refresh(),
 				this.refreshWorkspaceActivity(),
 				this.workspaceDeletion.refreshRuns(),
-				this.refreshCurrentWorkspaceSurface(),
+				this.workspaceSurface.refreshCurrent(),
 			]);
 		} finally {
 			this.isRefreshingApp = false;
 		}
-	}
-
-	private async refreshCurrentWorkspaceSurface(): Promise<void> {
-		const workspace = this.state.selectedWorkspace;
-		const tool =
-			this.state.mainView !== "chat" && this.state.mainView !== "navigation"
-				? this.state.mainView
-				: this.state.workspaceTool;
-		if (tool === "core:workspace.files") await this.files.refreshFiles();
-		else if (tool === "core:workspace.git") await this.git.refreshGit();
-		else if (tool === "core:workspace.terminal" && workspace !== undefined)
-			await this.refreshActiveTerminals(workspace);
 	}
 
 	private hardReloadApp(): void {
@@ -290,7 +293,7 @@ export class PiWebApp extends LitElement {
 			if (route.projectId === undefined || route.projectId === "") return;
 			if (this.routeMatchesCurrentSelection(route)) {
 				if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
-				await this.refreshRestoredWorkspaceTool(route.tool, selectedFilePath);
+				await this.workspaceSurface.refreshRestoredTool(route.tool, selectedFilePath);
 				this.git.updatePolling();
 				return;
 			}
@@ -303,7 +306,7 @@ export class PiWebApp extends LitElement {
 			});
 			this.setState({ selectedFilePath, selectedDiffPath, selectedTerminalId });
 			if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
-			await this.refreshRestoredWorkspaceTool(route.tool, selectedFilePath);
+			await this.workspaceSurface.refreshRestoredTool(route.tool, selectedFilePath);
 			this.git.updatePolling();
 		} finally {
 			this.routeRestoreInProgress = false;
@@ -319,16 +322,6 @@ export class PiWebApp extends LitElement {
 			this.state.selectedWorkspace?.id === route.workspaceId &&
 			this.state.selectedSession?.id === route.sessionId
 		);
-	}
-
-	private async refreshRestoredWorkspaceTool(
-		tool: QualifiedContributionId | undefined,
-		selectedFilePath: string | undefined,
-	): Promise<void> {
-		if (tool === "core:workspace.files") await this.files.refreshFiles();
-		if (tool === "core:workspace.files" && selectedFilePath !== undefined)
-			await this.files.restoreFile(selectedFilePath);
-		if (tool === "core:workspace.git") await this.git.refreshGit();
 	}
 
 	private async withChatScrollTransition(action: () => Promise<void>) {
@@ -369,11 +362,7 @@ export class PiWebApp extends LitElement {
 	}
 
 	private openWorkspaceTool(tool: QualifiedContributionId) {
-		if (tool === "core:workspace.terminal") this.terminalAutoStartWorkspaceId = this.state.selectedWorkspace?.id;
-		this.setState({ workspaceTool: tool, mainView: tool });
-		this.updateUrl();
-		this.refreshSelectedWorkspaceTool(tool);
-		this.git.updatePolling();
+		this.workspaceSurface.openWorkspaceTool(tool);
 	}
 
 	private openTerminal(options?: { terminalId?: string | undefined }): void {
@@ -408,18 +397,12 @@ export class PiWebApp extends LitElement {
 	}
 
 	private selectMainView(view: AppState["mainView"]) {
-		if (view !== "navigation" && view !== "chat") {
-			this.openWorkspaceTool(view);
-			return;
-		}
-		this.setState({ mainView: view });
-		this.updateUrl();
-		this.git.updatePolling();
+		this.workspaceSurface.selectMainView(view);
 	}
 
 	private handleWorkspaceChange(previous: AppState, next: AppState) {
 		if (previous.selectedWorkspace?.id === next.selectedWorkspace?.id) return;
-		this.terminalAutoStartWorkspaceId = undefined;
+		this.workspaceSurface.resetTerminalAutoStart();
 		const selectedTerminalId = this.terminalActivity.resetForWorkspace(
 			next.selectedWorkspace,
 			this.routeRestoreInProgress ? this.restoringRouteTerminalId : undefined,
@@ -428,7 +411,7 @@ export class PiWebApp extends LitElement {
 		if (next.selectedWorkspace === undefined) return;
 		void this.refreshActiveTerminals(next.selectedWorkspace);
 		void this.workspaceDeletion.refreshRuns();
-		this.refreshSelectedWorkspaceTool(next.workspaceTool);
+		this.workspaceSurface.refreshSelectedTool(next.workspaceTool);
 		this.git.updatePolling();
 	}
 
@@ -450,17 +433,7 @@ export class PiWebApp extends LitElement {
 	}
 
 	private handleActivityTransition(previous: AppState, next: AppState) {
-		const wasActive = isActive(previous);
-		const nowActive = isActive(next);
-		if (wasActive && !nowActive) {
-			this.setState({ fileTreeStale: true, gitStale: true });
-			this.refreshSelectedWorkspaceTool(this.state.workspaceTool);
-		}
-	}
-
-	private refreshSelectedWorkspaceTool(tool: QualifiedContributionId): void {
-		if (tool === "core:workspace.files") void this.files.refreshFiles();
-		if (tool === "core:workspace.git") void this.git.refreshGit();
+		this.workspaceSurface.handleActivityTransition(previous, next);
 	}
 
 	private renderWorkspacePanel() {
@@ -662,7 +635,7 @@ export class PiWebApp extends LitElement {
 					gitStale: this.state.gitStale,
 					activeTerminalCount: this.state.activeTerminalCount,
 					selectedTerminalId: this.state.selectedTerminalId,
-					terminalAutoStart: this.terminalAutoStartWorkspaceId === workspace.id,
+					terminalAutoStart: this.workspaceSurface.shouldAutoStartTerminal(workspace.id),
 					openTerminal: (options) => {
 						this.openTerminal(options);
 					},
@@ -1092,10 +1065,6 @@ export class PiWebApp extends LitElement {
 
 function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
 	return Object.entries(patch).some(([key, value]) => Reflect.get(state, key) !== value);
-}
-
-function isActive(state: Pick<AppState, "status" | "activity">): boolean {
-	return isSessionActive(state.status, state.activity);
 }
 
 function nextFrame(): Promise<void> {
