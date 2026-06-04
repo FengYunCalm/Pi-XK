@@ -14,11 +14,12 @@ import { type AppState, initialAppState } from "../appState";
 import { createAppControllers } from "../controllers/appControllers";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { RealtimeEventController } from "../controllers/realtimeEventController";
+import { RouteRestoreController } from "../controllers/routeRestoreController";
 import { TerminalActivityController } from "../controllers/terminalActivityController";
 import { WorkspaceDeletionController } from "../controllers/workspaceDeletionController";
 import { WorkspaceSurfaceController } from "../controllers/workspaceSurfaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
-import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
+import { queryNamespace, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { createBuiltinPluginRegistry } from "../plugins/builtin";
 import { loadExternalPlugins } from "../plugins/external";
 import { installPluginRuntimeScope, installWorkspacePanelScope } from "../plugins/registry";
@@ -30,7 +31,7 @@ import type {
 	QualifiedWorkspacePanelContribution,
 	WorkspacePanelContext,
 } from "../plugins/types";
-import { type AppRoute, readRoute, writeRoute } from "../route";
+import { writeRoute } from "../route";
 import { TerminalCommandRunRegistry } from "../runtime/terminalCommandRunRegistry";
 import { RealtimeSocket } from "../sessionSocket";
 import {
@@ -159,13 +160,25 @@ export class PiWebApp extends LitElement {
 			refreshActiveTerminals: (workspace) => this.refreshActiveTerminals(workspace),
 		},
 	);
-	private routeRestoreInProgress = false;
-	private restoringRouteTerminalId: string | undefined;
+	private readonly routeRestore = new RouteRestoreController(
+		() => this.state,
+		(patch) => {
+			this.setState(patch);
+		},
+		{
+			defaultRouteView: () => this.defaultRouteView(),
+			selectProject: (project, target) => this.workspaces.selectProject(project, target),
+			rememberSelectedTerminal: (terminalId) => this.terminalActivity.rememberSelectedTerminal(terminalId),
+			refreshRestoredTool: (tool, selectedFilePath) =>
+				this.workspaceSurface.refreshRestoredTool(tool, selectedFilePath),
+			updateGitPolling: () => this.git.updatePolling(),
+		},
+	);
 	private readonly plugins = createBuiltinPluginRegistry();
 	private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
 	@state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
 	@state() private isRefreshingApp = false;
-	private readonly onPopState = () => void this.withChatScrollTransition(() => this.restoreRoute(false));
+	private readonly onPopState = () => void this.withChatScrollTransition(() => this.routeRestore.restore(false));
 	private readonly onPageShow = () => {
 		this.appShell.repairViewportPosition();
 	};
@@ -243,7 +256,7 @@ export class PiWebApp extends LitElement {
 
 	private async loadProjectsAndRestoreRoute() {
 		await this.projects.loadProjects();
-		await this.withChatScrollTransition(() => this.restoreRoute(false));
+		await this.withChatScrollTransition(() => this.routeRestore.restore(false));
 		await this.workspaceDeletion.refreshRuns();
 	}
 
@@ -273,55 +286,6 @@ export class PiWebApp extends LitElement {
 
 	private hardReloadApp(): void {
 		window.location.reload();
-	}
-
-	private async restoreRoute(updateUrl: boolean) {
-		const route = readRoute();
-		const selectedFilePath = readNamespacedString(queryNamespace("core:workspace.files"), "file");
-		const selectedDiffPath = readNamespacedString(queryNamespace("core:workspace.git"), "diff");
-		const selectedTerminalId = readNamespacedString(TERMINAL_ROUTE_NAMESPACE, "terminal");
-		this.routeRestoreInProgress = true;
-		this.restoringRouteTerminalId = selectedTerminalId;
-		try {
-			this.setState({
-				workspaceTool: route.tool ?? this.state.workspaceTool,
-				mainView: route.view ?? this.defaultRouteView(),
-				selectedFilePath,
-				selectedDiffPath,
-				selectedTerminalId,
-			});
-			if (route.projectId === undefined || route.projectId === "") return;
-			if (this.routeMatchesCurrentSelection(route)) {
-				if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
-				await this.workspaceSurface.refreshRestoredTool(route.tool, selectedFilePath);
-				this.git.updatePolling();
-				return;
-			}
-			const project = this.state.projects.find((p) => p.id === route.projectId);
-			if (!project) return;
-			await this.workspaces.selectProject(project, {
-				workspaceId: route.workspaceId,
-				sessionId: route.sessionId,
-				updateUrl,
-			});
-			this.setState({ selectedFilePath, selectedDiffPath, selectedTerminalId });
-			if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
-			await this.workspaceSurface.refreshRestoredTool(route.tool, selectedFilePath);
-			this.git.updatePolling();
-		} finally {
-			this.routeRestoreInProgress = false;
-			this.restoringRouteTerminalId = undefined;
-		}
-	}
-
-	private routeMatchesCurrentSelection(route: AppRoute): boolean {
-		return (
-			route.workspaceId !== undefined &&
-			route.workspaceId !== "" &&
-			this.state.selectedProject?.id === route.projectId &&
-			this.state.selectedWorkspace?.id === route.workspaceId &&
-			this.state.selectedSession?.id === route.sessionId
-		);
 	}
 
 	private async withChatScrollTransition(action: () => Promise<void>) {
@@ -405,9 +369,9 @@ export class PiWebApp extends LitElement {
 		this.workspaceSurface.resetTerminalAutoStart();
 		const selectedTerminalId = this.terminalActivity.resetForWorkspace(
 			next.selectedWorkspace,
-			this.routeRestoreInProgress ? this.restoringRouteTerminalId : undefined,
+			this.routeRestore.isRestoring ? this.routeRestore.restoringTerminalId : undefined,
 		);
-		if (!this.routeRestoreInProgress) this.writeSelectedTerminalToUrl(selectedTerminalId, { replace: true });
+		if (!this.routeRestore.isRestoring) this.writeSelectedTerminalToUrl(selectedTerminalId, { replace: true });
 		if (next.selectedWorkspace === undefined) return;
 		void this.refreshActiveTerminals(next.selectedWorkspace);
 		void this.workspaceDeletion.refreshRuns();
