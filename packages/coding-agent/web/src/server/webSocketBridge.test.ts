@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { createBufferedSender } from "./webSocketBridge.ts";
@@ -33,7 +34,35 @@ describe("createBufferedSender", () => {
 		client.close();
 		serverSocket.close();
 	});
+
+	it("drops queued messages when the socket closes before opening", () => {
+		const socket = new FakeSocket(WebSocket.CONNECTING);
+		const send = createBufferedSender(socket.asWebSocket());
+
+		send("dropped-before-open");
+		socket.emit("close");
+		socket.readyState = WebSocket.OPEN;
+		socket.emit("open");
+
+		expect(socket.sent).toEqual([]);
+	});
 });
+
+class FakeSocket extends EventEmitter {
+	readonly sent: RawData[] = [];
+
+	constructor(public readyState: number) {
+		super();
+	}
+
+	send(data: RawData): void {
+		this.sent.push(data);
+	}
+
+	asWebSocket(): WebSocket {
+		return this as unknown as WebSocket;
+	}
+}
 
 function waitForListening(socketServer: WebSocketServer): Promise<void> {
 	if (socketServer.address() !== null) return Promise.resolve();
