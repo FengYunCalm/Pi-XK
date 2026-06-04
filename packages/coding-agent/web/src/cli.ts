@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -15,16 +15,19 @@ interface ForegroundOptions {
 	host: string;
 	port: string;
 	config?: string;
+	printLogs: boolean;
 }
 
 type Entrypoint = "server" | "sessiond";
 
-function parseForegroundOptions(args: string[]): ForegroundOptions {
-	const options: ForegroundOptions = { host: "127.0.0.1", port: "8504" };
+export function parseForegroundOptions(args: string[]): ForegroundOptions {
+	const options: ForegroundOptions = { host: "127.0.0.1", port: "8504", printLogs: false };
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
 		if (arg === undefined) continue;
-		if (arg === "--host") {
+		if (arg === "--print-logs") {
+			options.printLogs = true;
+		} else if (arg === "--host") {
 			const value = args[i + 1];
 			if (value === undefined) throw new Error("--host requires a value");
 			options.host = value;
@@ -52,6 +55,18 @@ function parseForegroundOptions(args: string[]): ForegroundOptions {
 	return options;
 }
 
+export function webInterfaceUrl(options: Pick<ForegroundOptions, "host" | "port">): string {
+	const browserHost = options.host === "0.0.0.0" || options.host === "::" ? "127.0.0.1" : options.host;
+	const formattedHost = browserHost.includes(":") && !browserHost.startsWith("[") ? `[${browserHost}]` : browserHost;
+	return `http://${formattedHost}:${options.port}/`;
+}
+
+export function browserOpenCommand(url: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+	if (platform === "darwin") return { command: "open", args: [url] };
+	if (platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
+	return { command: "xdg-open", args: [url] };
+}
+
 function runtimeRootPath(): string {
 	const moduleDir = dirname(fileURLToPath(import.meta.url));
 	if (existsSync(join(moduleDir, "server", "index.js"))) return moduleDir;
@@ -74,18 +89,67 @@ async function writeInitialConfig(options: ForegroundOptions): Promise<string> {
 async function runForeground(args: string[]): Promise<void> {
 	const options = parseForegroundOptions(args);
 	const configPath = await writeInitialConfig(options);
-	const host = options.host === "0.0.0.0" ? "127.0.0.1" : options.host;
+	const url = webInterfaceUrl(options);
 	const env = {
 		...process.env,
 		PI_WEB_CONFIG: configPath,
 		PI_WEB_HOST: options.host,
 		PI_WEB_PORT: options.port,
 	};
-	const sessiond = spawn(process.execPath, [packageEntrypointPath("sessiond")], { stdio: "inherit", env });
-	const web = spawn(process.execPath, [packageEntrypointPath("server")], { stdio: "inherit", env });
-	console.log(`Pi Web mode running at http://${host}:${options.port}`);
-	console.log("Press Ctrl-C to stop.");
-	process.exitCode = await waitForForegroundProcesses([sessiond, web]);
+	const stdio: StdioOptions = options.printLogs ? "inherit" : "ignore";
+	const sessiond = spawn(process.execPath, [packageEntrypointPath("sessiond")], { stdio, env });
+	const web = spawn(process.execPath, [packageEntrypointPath("server")], { stdio, env });
+	const processes = [sessiond, web];
+	try {
+		await waitForWebReady(url, processes);
+	} catch (error) {
+		stopProcesses(processes);
+		throw error;
+	}
+	openBrowser(url);
+	console.log(`Web interface: ${url}`);
+	process.exitCode = await waitForForegroundProcesses(processes);
+}
+
+function openBrowser(url: string): void {
+	const { command, args } = browserOpenCommand(url);
+	try {
+		const child = spawn(command, args, { detached: true, stdio: "ignore" });
+		child.once("error", () => undefined);
+		child.unref();
+	} catch {
+		// The URL is printed for manual opening when no browser opener is available.
+	}
+}
+
+async function waitForWebReady(url: string, processes: ChildProcess[], timeoutMs = 10_000): Promise<void> {
+	const statusUrl = new URL("/api/pi-web/version", url).toString();
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const exited = processes.find((child) => child.exitCode !== null || child.signalCode !== null);
+		if (exited !== undefined) {
+			throw new Error("Pi Web failed to start. Re-run with `pi web --print-logs` to inspect startup logs.");
+		}
+
+		try {
+			const response = await fetch(statusUrl);
+			if (response.ok) return;
+		} catch {
+			// Server is not listening yet.
+		}
+		await sleep(150);
+	}
+	throw new Error("Timed out waiting for Pi Web to start. Re-run with `pi web --print-logs` to inspect startup logs.");
+}
+
+function stopProcesses(processes: ChildProcess[]): void {
+	for (const child of processes) {
+		if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+	}
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function waitForForegroundProcesses(processes: ChildProcess[]): Promise<number> {
@@ -93,9 +157,7 @@ async function waitForForegroundProcesses(processes: ChildProcess[]): Promise<nu
 	const stop = (): void => {
 		if (stopping) return;
 		stopping = true;
-		for (const child of processes) {
-			if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
-		}
+		stopProcesses(processes);
 	};
 	process.once("SIGINT", stop);
 	process.once("SIGTERM", stop);
@@ -121,7 +183,7 @@ async function waitForForegroundProcesses(processes: ChildProcess[]): Promise<nu
 
 async function doctor(): Promise<void> {
 	console.log(`Platform: ${platformLabel()}`);
-	console.log("Run mode: foreground terminal process");
+	console.log("Run mode: foreground terminal process, silent logs by default");
 	console.log("");
 	await printPiWebVersionReport();
 	console.log("\nDoctor checks:");
@@ -155,12 +217,15 @@ function help(): void {
 	console.log(`Pi Web mode
 
 Usage:
-  pi web [--host 127.0.0.1] [--port 8504] [--config ~/.config/pi-web/config.json]
-  pi web doctor
-  pi web version
+	pi web [--host 127.0.0.1] [--port 8504] [--config ~/.config/pi-web/config.json] [--print-logs]
+	pi web doctor
+	pi web version
 
 Start Web mode:
-  pi web
+	pi web
+
+Options:
+	--print-logs   print server and session logs to stderr/stdout
 `);
 }
 
