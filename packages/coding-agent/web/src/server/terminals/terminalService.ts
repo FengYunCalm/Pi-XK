@@ -1,14 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import * as pty from "node-pty";
-import type {
-	TerminalCommandRun,
-	TerminalCommandRunFilter,
-	TerminalCommandRunStatus,
-	TerminalUiEvent,
-} from "../../shared/apiTypes.ts";
+import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalUiEvent } from "../../shared/apiTypes.ts";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.ts";
 import type { SessionEventHub } from "../realtime/sessionEventHub.ts";
+import { TerminalCommandRunStore } from "./terminalCommandRunStore.ts";
 
 const MAX_REPLAY_BUFFER = 200_000;
 
@@ -43,7 +39,7 @@ interface TerminalRecord extends TerminalInfo {
 
 export class TerminalService {
 	private readonly terminals = new Map<string, TerminalRecord>();
-	private readonly commandRuns = new Map<string, TerminalCommandRun>();
+	private readonly commandRuns = new TerminalCommandRunStore();
 	private readonly events: SessionEventHub | undefined;
 	private readonly workspaceActivity: Pick<WorkspaceActivityService, "updateTerminal" | "removeTerminal"> | undefined;
 
@@ -64,25 +60,17 @@ export class TerminalService {
 	}
 
 	runCommand(options: RunTerminalCommandOptions): TerminalCommandRun {
-		validateCommandRunOptions(options);
-		const commandRunId = randomUUID();
+		if (options.cwd.trim() === "") throw new Error("cwd is required");
 		const terminalId = randomUUID();
-		const createdAt = new Date().toISOString();
-		const metadata = parseMetadata(options.metadata);
-		const queued: TerminalCommandRun = {
-			id: commandRunId,
+		const run = this.commandRuns.start({
 			origin: options.origin,
 			projectId: options.projectId,
 			workspaceId: options.workspaceId,
 			terminalId,
 			title: options.title,
 			command: options.command,
-			status: "queued",
-			createdAt,
-			metadata,
-		};
-		const running: TerminalCommandRun = { ...queued, status: "running", startedAt: new Date().toISOString() };
-		this.commandRuns.set(commandRunId, running);
+			metadata: options.metadata,
+		});
 
 		try {
 			this.createTerminal({
@@ -92,33 +80,32 @@ export class TerminalService {
 				...(options.cols === undefined ? {} : { cols: options.cols }),
 				...(options.rows === undefined ? {} : { rows: options.rows }),
 				shellArgs: ["-lc", commandRunShellScript(options.command)],
-				commandRunId,
+				commandRunId: run.id,
 			});
 		} catch (error) {
-			this.commandRuns.delete(commandRunId);
+			this.commandRuns.delete(run.id);
 			throw error;
 		}
 
-		return copyCommandRun(this.commandRuns.get(commandRunId) ?? running);
+		return this.commandRuns.get(run.id) ?? run;
 	}
 
 	listCommandRuns(filter: TerminalCommandRunFilter = {}): TerminalCommandRun[] {
-		return [...this.commandRuns.values()].filter((run) => matchesCommandRunFilter(run, filter)).map(copyCommandRun);
+		return this.commandRuns.list(filter);
 	}
 
 	getCommandRun(runId: string): TerminalCommandRun | undefined {
-		const run = this.commandRuns.get(runId);
-		return run === undefined ? undefined : copyCommandRun(run);
+		return this.commandRuns.get(runId);
 	}
 
 	cancelCommandRun(runId: string): TerminalCommandRun {
 		const run = this.commandRuns.get(runId);
 		if (run === undefined) throw new Error("Terminal command run not found");
-		if (isTerminalCommandRunFinal(run.status)) return copyCommandRun(run);
+		if (this.commandRuns.isFinal(run.id)) return run;
 		const terminal = this.terminals.get(run.terminalId);
 		if (terminal === undefined) throw new Error("Terminal not found");
 		if (!terminal.exited) terminal.pty.write("\x03");
-		return copyCommandRun(run);
+		return run;
 	}
 
 	get(id: string): TerminalInfo | undefined {
@@ -248,25 +235,12 @@ export class TerminalService {
 		record.pty.onExit(({ exitCode }) => {
 			record.exited = true;
 			record.exitCode = exitCode;
-			this.completeCommandRun(record.commandRunId, exitCode);
+		this.commandRuns.complete(record.commandRunId, exitCode);
 			record.events.emit("exit", exitCode);
 			const info = toInfo(record);
 			this.workspaceActivity?.updateTerminal(info);
 			this.publish({ type: "terminal.exited", terminal: info });
 		});
-	}
-
-	private completeCommandRun(runId: string | undefined, exitCode: number | undefined): void {
-		if (runId === undefined) return;
-		const run = this.commandRuns.get(runId);
-		if (run === undefined || isTerminalCommandRunFinal(run.status)) return;
-		const completed: TerminalCommandRun = {
-			...run,
-			status: exitCode === 0 ? "succeeded" : "failed",
-			...(exitCode === undefined ? {} : { exitCode }),
-			completedAt: new Date().toISOString(),
-		};
-		this.commandRuns.set(runId, completed);
 	}
 
 	private require(id: string): TerminalRecord {
@@ -303,50 +277,4 @@ function commandRunShellScript(command: string): string {
 
 function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function validateCommandRunOptions(options: RunTerminalCommandOptions): void {
-	if (options.origin.trim() === "") throw new Error("origin is required");
-	if (options.projectId.trim() === "") throw new Error("projectId is required");
-	if (options.workspaceId.trim() === "") throw new Error("workspaceId is required");
-	if (options.cwd.trim() === "") throw new Error("cwd is required");
-	if (options.title.trim() === "") throw new Error("title is required");
-	if (options.command.trim() === "") throw new Error("command is required");
-	parseMetadata(options.metadata);
-}
-
-function parseMetadata(value: unknown): Record<string, string> {
-	if (value === undefined || value === null) return {};
-	if (!isRecord(value) || Array.isArray(value)) throw new Error("metadata must be an object");
-	return Object.fromEntries(
-		Object.entries(value).map(([key, metadataValue]) => {
-			if (key.trim() === "") throw new Error("metadata keys must not be empty");
-			if (typeof metadataValue !== "string") throw new Error("metadata values must be strings");
-			return [key, metadataValue];
-		}),
-	);
-}
-
-function matchesCommandRunFilter(run: TerminalCommandRun, filter: TerminalCommandRunFilter): boolean {
-	if (filter.projectId !== undefined && run.projectId !== filter.projectId) return false;
-	if (filter.workspaceId !== undefined && run.workspaceId !== filter.workspaceId) return false;
-	if (filter.terminalId !== undefined && run.terminalId !== filter.terminalId) return false;
-	if (filter.statuses !== undefined && filter.statuses.length > 0 && !filter.statuses.includes(run.status))
-		return false;
-	for (const [key, value] of Object.entries(filter.metadata ?? {})) {
-		if (run.metadata[key] !== value) return false;
-	}
-	return true;
-}
-
-function isTerminalCommandRunFinal(status: TerminalCommandRunStatus): boolean {
-	return status === "succeeded" || status === "failed";
-}
-
-function copyCommandRun(run: TerminalCommandRun): TerminalCommandRun {
-	return { ...run, metadata: { ...run.metadata } };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
