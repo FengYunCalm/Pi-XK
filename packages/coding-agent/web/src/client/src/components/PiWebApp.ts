@@ -9,7 +9,6 @@ import {
 	type TerminalCommandRun,
 	type TerminalUiEvent,
 	type ThinkingLevel,
-	terminalsApi,
 	type Workspace,
 } from "../api";
 import { AppShellController } from "../appShell/appShellController";
@@ -18,7 +17,7 @@ import { mainViewClass, PanelCollapseController } from "../appShell/panelCollaps
 import { type AppState, initialAppState } from "../appState";
 import { createAppControllers } from "../controllers/appControllers";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
-import { InMemoryTerminalSelectionMemory } from "../controllers/terminalSelection";
+import { TerminalActivityController } from "../controllers/terminalActivityController";
 import { canDeleteWorkspace } from "../controllers/workspaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
@@ -108,8 +107,12 @@ export class PiWebApp extends LitElement {
 	private readonly git = this.controllers.git;
 	private readonly keyboard = new KeyboardShortcutDispatcher();
 	private readonly realtime = new RealtimeSocket();
-	private readonly activeTerminalIds = new Set<string>();
-	private readonly terminalSelection = new InMemoryTerminalSelectionMemory();
+	private readonly terminalActivity = new TerminalActivityController(
+		() => this.state,
+		(patch) => {
+			this.setState(patch);
+		},
+	);
 	private readonly appShell = new AppShellController(this);
 	private readonly panelCollapse = new PanelCollapseController(this);
 	private readonly mobileNavigation = new MobileNavigationController(
@@ -277,7 +280,7 @@ export class PiWebApp extends LitElement {
 			});
 			if (route.projectId === undefined || route.projectId === "") return;
 			if (this.routeMatchesCurrentSelection(route)) {
-				if (selectedTerminalId !== undefined) this.rememberSelectedTerminal(selectedTerminalId);
+				if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
 				await this.refreshRestoredWorkspaceTool(route.tool, selectedFilePath);
 				this.git.updatePolling();
 				return;
@@ -290,7 +293,7 @@ export class PiWebApp extends LitElement {
 				updateUrl,
 			});
 			this.setState({ selectedFilePath, selectedDiffPath, selectedTerminalId });
-			if (selectedTerminalId !== undefined) this.rememberSelectedTerminal(selectedTerminalId);
+			if (selectedTerminalId !== undefined) this.terminalActivity.rememberSelectedTerminal(selectedTerminalId);
 			await this.refreshRestoredWorkspaceTool(route.tool, selectedFilePath);
 			this.git.updatePolling();
 		} finally {
@@ -383,16 +386,9 @@ export class PiWebApp extends LitElement {
 	}
 
 	private selectTerminal(terminalId: string | undefined, options?: { replace?: boolean | undefined }): void {
-		this.rememberSelectedTerminal(terminalId);
+		this.terminalActivity.rememberSelectedTerminal(terminalId);
 		this.setState({ selectedTerminalId: terminalId });
 		this.writeSelectedTerminalToUrl(terminalId, options);
-	}
-
-	private rememberSelectedTerminal(terminalId: string | undefined): void {
-		const workspace = this.state.selectedWorkspace;
-		if (workspace === undefined) return;
-		if (terminalId === undefined) this.terminalSelection.forgetWorkspace(workspace.path);
-		else this.terminalSelection.rememberTerminal(workspace.path, terminalId);
 	}
 
 	private writeSelectedTerminalToUrl(
@@ -415,13 +411,10 @@ export class PiWebApp extends LitElement {
 	private handleWorkspaceChange(previous: AppState, next: AppState) {
 		if (previous.selectedWorkspace?.id === next.selectedWorkspace?.id) return;
 		this.terminalAutoStartWorkspaceId = undefined;
-		this.activeTerminalIds.clear();
-		const selectedTerminalId = this.routeRestoreInProgress
-			? this.restoringRouteTerminalId
-			: next.selectedWorkspace === undefined
-				? undefined
-				: this.terminalSelection.latestTerminalId(next.selectedWorkspace.path);
-		this.setState({ activeTerminalCount: 0, selectedTerminalId });
+		const selectedTerminalId = this.terminalActivity.resetForWorkspace(
+			next.selectedWorkspace,
+			this.routeRestoreInProgress ? this.restoringRouteTerminalId : undefined,
+		);
 		if (!this.routeRestoreInProgress) this.writeSelectedTerminalToUrl(selectedTerminalId, { replace: true });
 		if (next.selectedWorkspace === undefined) return;
 		void this.refreshActiveTerminals(next.selectedWorkspace);
@@ -452,31 +445,12 @@ export class PiWebApp extends LitElement {
 	}
 
 	private applyTerminalEvent(event: TerminalUiEvent): void {
-		const workspace = this.state.selectedWorkspace;
-		if (workspace === undefined) return;
-		const cwd = event.type === "terminal.closed" ? event.cwd : event.terminal.cwd;
-		if (cwd !== workspace.path) return;
-		if (event.type === "terminal.created" && !event.terminal.exited) this.activeTerminalIds.add(event.terminal.id);
-		else this.activeTerminalIds.delete(event.type === "terminal.closed" ? event.terminalId : event.terminal.id);
-		if (event.type === "terminal.closed") {
-			this.terminalSelection.forgetTerminal(event.terminalId);
-			if (this.state.selectedTerminalId === event.terminalId) this.selectTerminal(undefined, { replace: true });
-		}
-		this.setState({ activeTerminalCount: this.activeTerminalIds.size });
+		if (this.terminalActivity.applyTerminalEvent(event).clearedSelectedTerminal)
+			this.writeSelectedTerminalToUrl(undefined, { replace: true });
 	}
 
 	private async refreshActiveTerminals(workspace: Workspace): Promise<void> {
-		try {
-			const terminals = await terminalsApi.terminals(workspace.projectId, workspace.id);
-			if (this.state.selectedWorkspace?.id !== workspace.id) return;
-			this.activeTerminalIds.clear();
-			for (const terminal of terminals) {
-				if (!terminal.exited) this.activeTerminalIds.add(terminal.id);
-			}
-			this.setState({ activeTerminalCount: this.activeTerminalIds.size });
-		} catch (error) {
-			this.setState({ error: String(error) });
-		}
+		await this.terminalActivity.refreshActiveTerminals(workspace);
 	}
 
 	private handleActivityTransition(previous: AppState, next: AppState) {
