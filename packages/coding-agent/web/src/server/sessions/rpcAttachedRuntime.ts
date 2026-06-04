@@ -42,7 +42,6 @@ class RpcAttachedRuntime implements PiSessionRuntime {
 
 	setRebindSession(rebindSession?: (session: PiAgentSession) => Promise<void>): void {
 		this.rebindSession = rebindSession;
-		void this.rebindSession;
 	}
 
 	async fork(entryId: string, options?: { position?: "before" | "at" }): Promise<{ cancelled: boolean; selectedText?: string }> {
@@ -225,9 +224,15 @@ class RpcAttachedAgentSession implements PiAgentSession {
 	clearQueue(): { steering: string[]; followUp: string[] } {
 		const previous = this.queue;
 		this.queue = { steering: [], followUp: [] };
-		void this.client.clearQueue().then((queue) => {
-			this.queue = queue;
-		});
+		void this.client
+			.clearQueue()
+			.then((queue) => {
+				this.queue = queue;
+			})
+			.catch(() => {
+				this.queue = previous;
+				void this.refreshQueue().catch(() => undefined);
+			});
 		return previous;
 	}
 
@@ -255,20 +260,39 @@ class RpcAttachedAgentSession implements PiAgentSession {
 	}
 
 	setThinkingLevel(level: ClientThinkingLevel): void {
+		const previous = this.state.thinkingLevel;
 		this.state = { ...this.state, thinkingLevel: level };
-		void this.client.setThinkingLevel(level);
+		void this.client
+			.setThinkingLevel(level)
+			.then(() => this.refreshState())
+			.catch(() => {
+				this.state = { ...this.state, thinkingLevel: previous };
+				void this.refreshState().catch(() => undefined);
+			});
 	}
 
 	cycleThinkingLevel(): ClientThinkingLevel | undefined {
-		void this.client.cycleThinkingLevel().then((result) => {
-			if (result !== null) this.state = { ...this.state, thinkingLevel: result.level };
-		});
+		void this.client
+			.cycleThinkingLevel()
+			.then((result) => {
+				if (result !== null) this.state = { ...this.state, thinkingLevel: result.level };
+			})
+			.catch(() => {
+				void this.refreshState().catch(() => undefined);
+			});
 		return this.thinkingLevel;
 	}
 
 	setSessionName(name: string): void {
+		const previous = this.state.sessionName;
 		this.state = { ...this.state, sessionName: name };
-		void this.client.setSessionName(name);
+		void this.client
+			.setSessionName(name)
+			.then(() => this.refreshState())
+			.catch(() => {
+				this.state = { ...this.state, ...(previous === undefined ? { sessionName: undefined } : { sessionName: previous }) };
+				void this.refreshState().catch(() => undefined);
+			});
 	}
 
 	async refresh(): Promise<void> {
@@ -320,7 +344,9 @@ class RpcAttachedAgentSession implements PiAgentSession {
 	private applyEvent(event: unknown): void {
 		const type = getString(event, "type");
 		if (type === "session_rebind") {
-			void this.refresh().then(() => this.rebindHandler?.());
+			void this.refresh()
+				.then(() => this.rebindHandler?.())
+				.catch(() => undefined);
 			return;
 		}
 		if (type === "agent_start") this.state = { ...this.state, isStreaming: true };
@@ -342,7 +368,7 @@ class RpcAttachedAgentSession implements PiAgentSession {
 		this.refreshPending = true;
 		setTimeout(() => {
 			this.refreshPending = false;
-			void this.refresh();
+			void this.refresh().catch(() => undefined);
 		}, 25);
 	}
 }

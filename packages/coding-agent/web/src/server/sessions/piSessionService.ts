@@ -32,10 +32,12 @@ import type {
 } from "../types.ts";
 import type { AuthChange } from "./authService.ts";
 import { BUILTIN_COMMANDS } from "./builtinCommands.ts";
+import { CompactionPromptQueue, type QueuedPromptKind } from "./compactionPromptQueue.ts";
 import { computeEditPreview, type EditPreviewResult } from "./editPreview.ts";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.ts";
 import { SessionCommandService } from "./sessionCommandService.ts";
 import { fallbackSessionName, generateShortSessionName } from "./sessionNameGenerator.ts";
+import { modelToClientModel, SessionStatePublisher } from "./sessionStatePublisher.ts";
 import { createRpcAttachedRuntime } from "./rpcAttachedRuntime.ts";
 import type { ActiveSession } from "./sessionRuntimeStore.ts";
 
@@ -45,13 +47,6 @@ function noop(): void {
 
 function authLossWarningKey(sessionId: string, provider: string, modelId: string): string {
 	return `${sessionId}:${provider}/${modelId}`;
-}
-
-type QueuedPromptKind = "steer" | "followUp";
-
-interface QueuedPrompt {
-	kind: QueuedPromptKind;
-	text: string;
 }
 
 interface PiSessionListEntry {
@@ -226,14 +221,10 @@ export interface PiSessionServiceDependencies {
 
 export class PiSessionService {
 	private readonly active = new Map<string, ActiveSession<PiSessionRuntime>>();
-	private readonly activities = new Map<
-		string,
-		{ phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }
-	>();
+	private readonly statePublisher: SessionStatePublisher;
+	private readonly compactionPromptQueue: CompactionPromptQueue;
 	private readonly heartbeat: NodeJS.Timeout;
 	private readonly commandService: SessionCommandService<PiAgentSession>;
-	private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
-	private readonly compactionDrainTimers = new Map<string, NodeJS.Timeout>();
 	private readonly authLossWarnings = new Set<string>();
 	private readonly runtimeAttachServers = new WeakMap<PiSessionRuntime, RuntimeAttachServer>();
 	private readonly agentDir: string;
@@ -258,8 +249,18 @@ export class PiSessionService {
 			deps.createRuntime ?? createDefaultRuntimeFactory(this.modelRegistry.authStorage, this.modelRegistry);
 		this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
 		this.workspaceActivity = deps.workspaceActivity;
+		this.statePublisher = new SessionStatePublisher({
+			events,
+			workspaceActivity: deps.workspaceActivity,
+			extraQueuedMessages: (sessionId) => this.compactionPromptQueue.queuedMessages(sessionId),
+		});
+		this.compactionPromptQueue = new CompactionPromptQueue({
+			getSession: (sessionId) => this.active.get(sessionId)?.runtime.session,
+			publishStatus: (session) => this.statePublisher.publishStatus(session),
+			submitPrompt: (session, text, behavior) => this.submitPrompt(session, text, behavior),
+		});
 		this.heartbeat = setInterval(() => {
-			this.publishHeartbeats();
+			this.statePublisher.publishHeartbeats([...this.active.values()].map((active) => active.runtime.session));
 		}, deps.heartbeatIntervalMs ?? 2000);
 		this.commandService = new SessionCommandService(
 			(sessionId) => this.getActive(sessionId),
@@ -267,17 +268,17 @@ export class PiSessionService {
 			events,
 			{
 				onCompactionStart: (session) => {
-					this.publishActivity(session, "compacting", "active");
-					this.publishStatus(session);
+					this.statePublisher.publishActivity(session, "compacting", "active");
+					this.statePublisher.publishStatus(session);
 				},
 				onCompactionEnd: (session, result, detail) => {
-					this.publishActivity(
+					this.statePublisher.publishActivity(
 						session,
 						result === "success" ? "compaction complete" : "compaction failed",
 						result === "success" ? "idle" : "error",
 						detail,
 					);
-					this.publishStatus(session);
+					this.statePublisher.publishStatus(session);
 				},
 			},
 			{ listSessionNames: (cwd) => this.listSessionNames(cwd) },
@@ -290,11 +291,10 @@ export class PiSessionService {
 
 	async dispose(): Promise<void> {
 		clearInterval(this.heartbeat);
-		this.clearCompactionDrainTimers();
+		this.compactionPromptQueue.clearAll();
 		const activeSessions = Array.from(new Set(this.active.values()));
 		this.active.clear();
-		this.activities.clear();
-		this.compactionPromptQueues.clear();
+		this.statePublisher.clear();
 		this.authLossWarnings.clear();
 		await Promise.all(
 			activeSessions.map(async (active) => {
@@ -352,7 +352,7 @@ export class PiSessionService {
 	}
 
 	async status(sessionId: string): Promise<ClientSessionStatus> {
-		return this.statusFromSession(await this.getOrOpen(sessionId));
+		return this.statePublisher.statusFromSession(await this.getOrOpen(sessionId));
 	}
 
 	async availableModels(sessionId: string): Promise<ClientSessionModel[]> {
@@ -378,9 +378,9 @@ export class PiSessionService {
 			session.modelRegistry.find(provider, modelId);
 		if (model === undefined) throw new Error(`Model not found: ${provider}/${modelId}`);
 		await session.setModel(model);
-		this.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
-		this.publishStatus(session);
-		return this.statusFromSession(session);
+		this.statePublisher.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
+		this.statePublisher.publishStatus(session);
+		return this.statePublisher.statusFromSession(session);
 	}
 
 	async cycleModel(sessionId: string, direction: "forward" | "backward"): Promise<ClientSessionStatus> {
@@ -389,9 +389,9 @@ export class PiSessionService {
 		const result = await session.cycleModel(direction);
 		if (result === undefined)
 			throw new Error(session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available");
-		this.publishActivity(session, `model: ${result.model.id}`, "idle", result.model.provider);
-		this.publishStatus(session);
-		return this.statusFromSession(session);
+		this.statePublisher.publishActivity(session, `model: ${result.model.id}`, "idle", result.model.provider);
+		this.statePublisher.publishStatus(session);
+		return this.statePublisher.statusFromSession(session);
 	}
 
 	async availableThinkingLevels(sessionId: string): Promise<ClientThinkingLevel[]> {
@@ -403,9 +403,9 @@ export class PiSessionService {
 		await this.assertWritable(sessionId);
 		const session = await this.getOrOpen(sessionId);
 		session.setThinkingLevel(level);
-		this.publishActivity(session, `thinking: ${session.thinkingLevel}`, "idle");
-		this.publishStatus(session);
-		return this.statusFromSession(session);
+		this.statePublisher.publishActivity(session, `thinking: ${session.thinkingLevel}`, "idle");
+		this.statePublisher.publishStatus(session);
+		return this.statePublisher.statusFromSession(session);
 	}
 
 	async cycleThinkingLevel(sessionId: string): Promise<ClientSessionStatus> {
@@ -413,9 +413,9 @@ export class PiSessionService {
 		const session = await this.getOrOpen(sessionId);
 		const level = session.cycleThinkingLevel();
 		if (level === undefined) throw new Error("Current model does not support thinking");
-		this.publishActivity(session, `thinking: ${level}`, "idle");
-		this.publishStatus(session);
-		return this.statusFromSession(session);
+		this.statePublisher.publishActivity(session, `thinking: ${level}`, "idle");
+		this.statePublisher.publishStatus(session);
+		return this.statePublisher.statusFromSession(session);
 	}
 
 	async commands(sessionId: string): Promise<ClientCommand[]> {
@@ -452,8 +452,8 @@ export class PiSessionService {
 		const isQueued = session.isStreaming || session.isCompacting;
 		const behavior = isQueued ? (streamingBehavior ?? "followUp") : undefined;
 		if (isQueued && this.hasQueuedMessageText(session, text)) {
-			this.publishActivity(session, "duplicate queued message ignored", "active");
-			this.publishStatus(session);
+			this.statePublisher.publishActivity(session, "duplicate queued message ignored", "active");
+			this.statePublisher.publishStatus(session);
 			return;
 		}
 		if (session.isCompacting) {
@@ -464,7 +464,7 @@ export class PiSessionService {
 	}
 
 	private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined): Promise<void> {
-		this.publishActivity(
+		this.statePublisher.publishActivity(
 			session,
 			behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted",
 			"active",
@@ -475,7 +475,7 @@ export class PiSessionService {
 			.prompt(text, behavior === undefined ? undefined : { streamingBehavior: behavior })
 			.catch((error: unknown) => {
 				const message = error instanceof Error ? error.message : String(error);
-				this.publishActivity(session, "error", "error", message);
+				this.statePublisher.publishActivity(session, "error", "error", message);
 				this.events.publish(session.sessionId, { type: "session.error", message });
 			});
 		void promptPromise;
@@ -483,11 +483,9 @@ export class PiSessionService {
 	}
 
 	private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind): void {
-		const queue = this.compactionPromptQueues.get(session.sessionId) ?? [];
-		queue.push({ kind, text });
-		this.compactionPromptQueues.set(session.sessionId, queue);
-		this.publishActivity(session, "message queued during compaction", "active");
-		this.publishStatus(session);
+		this.compactionPromptQueue.enqueue(session.sessionId, { kind, text });
+		this.statePublisher.publishActivity(session, "message queued during compaction", "active");
+		this.statePublisher.publishStatus(session);
 	}
 
 	async shell(sessionId: string, text: string): Promise<void> {
@@ -499,15 +497,15 @@ export class PiSessionService {
 		if (!command) throw new Error("Usage: !<shell command>");
 		if (session.isBashRunning) throw new Error("A bash command is already running");
 
-		this.publishActivity(session, "running bash", "active", command);
+		this.statePublisher.publishActivity(session, "running bash", "active", command);
 		this.events.publish(session.sessionId, { type: "shell.start", command, excludeFromContext: isExcluded });
 		void session
 			.executeBash(
 				command,
 				(chunk) => {
 					this.events.publish(session.sessionId, { type: "shell.chunk", chunk });
-					this.publishActivity(session, "running bash", "active", command);
-					this.publishStatus(session);
+					this.statePublisher.publishActivity(session, "running bash", "active", command);
+					this.statePublisher.publishStatus(session);
 				},
 				{ excludeFromContext: isExcluded },
 			)
@@ -520,15 +518,15 @@ export class PiSessionService {
 					truncated: result.truncated,
 					...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
 				});
-				this.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);
-				this.publishStatus(session);
+				this.statePublisher.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);
+				this.statePublisher.publishStatus(session);
 			})
 			.catch((error: unknown) => {
 				const message = error instanceof Error ? error.message : String(error);
 				this.events.publish(session.sessionId, { type: "shell.end", output: message, isError: true });
 				this.events.publish(session.sessionId, { type: "session.error", message });
-				this.publishActivity(session, "bash failed", "error", message);
-				this.publishStatus(session);
+				this.statePublisher.publishActivity(session, "bash failed", "error", message);
+				this.statePublisher.publishStatus(session);
 			});
 	}
 
@@ -552,11 +550,11 @@ export class PiSessionService {
 	async abort(sessionId: string): Promise<void> {
 		const active = this.active.get(sessionId);
 		if (!active) return;
-		this.clearCompactionPromptQueue(sessionId);
+		this.compactionPromptQueue.clear(sessionId);
 		clearSessionQueue(active.runtime.session);
 		await active.runtime.session.abort();
-		this.publishActivity(active.runtime.session, "stopped", "idle");
-		this.publishStatus(active.runtime.session);
+		this.statePublisher.publishActivity(active.runtime.session, "stopped", "idle");
+		this.statePublisher.publishStatus(active.runtime.session);
 	}
 
 	stop(sessionId: string): void {
@@ -589,10 +587,9 @@ export class PiSessionService {
 		const active = this.active.get(sessionId);
 		if (!active) return;
 		this.active.delete(sessionId);
-		this.activities.delete(sessionId);
-		this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
+		this.statePublisher.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
 		this.clearAuthLossWarningsForSession(sessionId);
-		this.clearCompactionPromptQueue(sessionId);
+		this.compactionPromptQueue.clear(sessionId);
 		clearSessionQueue(active.runtime.session);
 		active.unsubscribe();
 		try {
@@ -632,7 +629,7 @@ export class PiSessionService {
 			return Promise.resolve();
 		});
 		this.active.set(runtime.session.sessionId, active);
-		this.publishStatus(runtime.session);
+		this.statePublisher.publishStatus(runtime.session);
 		return active;
 	}
 
@@ -653,7 +650,7 @@ export class PiSessionService {
 			return Promise.resolve();
 		});
 		this.active.set(activeRuntime.session.sessionId, active);
-		this.publishStatus(activeRuntime.session);
+		this.statePublisher.publishStatus(activeRuntime.session);
 		return active;
 	}
 
@@ -689,81 +686,19 @@ export class PiSessionService {
 		for (const [sessionId, candidate] of this.active.entries()) {
 			if (candidate === active) {
 				this.active.delete(sessionId);
-				if (sessionId !== session.sessionId) this.clearCompactionPromptQueue(sessionId);
+				if (sessionId !== session.sessionId) this.compactionPromptQueue.clear(sessionId);
 			}
 		}
 		active.unsubscribe = session.subscribe((event) => {
 			this.events.publish(session.sessionId, toClientEvent(event));
-			this.publishActivityForEvent(session, event);
+			this.statePublisher.publishActivityForEvent(session, event);
 			const eventType = getString(event, "type");
-			if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
+			if (eventType === "compaction_end") this.compactionPromptQueue.scheduleDrain(session.sessionId);
 			if (eventType === "agent_start" || eventType === "agent_end")
-				this.scheduleCompactionQueueDrain(session.sessionId);
-			this.publishStatus(session);
+				this.compactionPromptQueue.scheduleDrain(session.sessionId);
+			this.statePublisher.publishStatus(session);
 		});
 		this.active.set(session.sessionId, active);
-	}
-
-	private scheduleCompactionQueueDrain(sessionId: string, delayMs = 0): void {
-		if (!this.compactionPromptQueues.has(sessionId) || this.compactionDrainTimers.has(sessionId)) return;
-		const timer = setTimeout(() => {
-			this.compactionDrainTimers.delete(sessionId);
-			this.drainCompactionPromptQueue(sessionId);
-		}, delayMs);
-		this.compactionDrainTimers.set(sessionId, timer);
-	}
-
-	private drainCompactionPromptQueue(sessionId: string): void {
-		const active = this.active.get(sessionId);
-		if (active === undefined) return;
-		const { session } = active.runtime;
-		if (session.isCompacting) {
-			this.scheduleCompactionQueueDrain(sessionId, 100);
-			return;
-		}
-
-		if (session.isStreaming) {
-			const queued = this.takeCompactionPromptQueue(sessionId);
-			if (queued.length === 0) return;
-			this.publishStatus(session);
-			for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind);
-			return;
-		}
-
-		const prompt = this.shiftCompactionPrompt(sessionId);
-		if (prompt === undefined) return;
-		this.publishStatus(session);
-		const submitted = this.submitPrompt(session, prompt.text, undefined);
-		void submitted.finally(() => {
-			this.scheduleCompactionQueueDrain(sessionId);
-		});
-	}
-
-	private takeCompactionPromptQueue(sessionId: string): QueuedPrompt[] {
-		const queued = this.compactionPromptQueues.get(sessionId) ?? [];
-		this.compactionPromptQueues.delete(sessionId);
-		return queued;
-	}
-
-	private shiftCompactionPrompt(sessionId: string): QueuedPrompt | undefined {
-		const queue = this.compactionPromptQueues.get(sessionId);
-		const prompt = queue?.shift();
-		if (queue === undefined || queue.length === 0) this.compactionPromptQueues.delete(sessionId);
-		return prompt;
-	}
-
-	private clearCompactionPromptQueue(sessionId: string): void {
-		this.compactionPromptQueues.delete(sessionId);
-		const timer = this.compactionDrainTimers.get(sessionId);
-		if (timer !== undefined) {
-			clearTimeout(timer);
-			this.compactionDrainTimers.delete(sessionId);
-		}
-	}
-
-	private clearCompactionDrainTimers(): void {
-		for (const timer of this.compactionDrainTimers.values()) clearTimeout(timer);
-		this.compactionDrainTimers.clear();
 	}
 
 	private maybeGenerateSessionName(session: PiAgentSession, firstMessage: string): void {
@@ -789,7 +724,7 @@ export class PiSessionService {
 	private applyGeneratedSessionName(session: PiAgentSession, name: string | undefined): void {
 		if (name === undefined || session.sessionName !== undefined) return;
 		session.setSessionName(name);
-		this.publishSessionName(session);
+		this.statePublisher.publishSessionName(session);
 	}
 
 	applyAuthChange(change: AuthChange = {}): void {
@@ -798,7 +733,7 @@ export class PiSessionService {
 			const { session } = active.runtime;
 			session.modelRegistry.refresh();
 			this.syncCurrentModelAuthWarning(session, change.removedProviderId);
-			this.publishStatus(session);
+			this.statePublisher.publishStatus(session);
 		}
 	}
 
@@ -834,180 +769,9 @@ export class PiSessionService {
 		}
 	}
 
-	private publishSessionName(session: PiAgentSession): void {
-		const event =
-			session.sessionName === undefined
-				? ({ type: "session.name", sessionId: session.sessionId } as const)
-				: ({ type: "session.name", sessionId: session.sessionId, name: session.sessionName } as const);
-		this.events.publish(session.sessionId, event);
-		this.events.publishGlobal(event);
-	}
-
-	private publishHeartbeats(): void {
-		for (const active of this.active.values()) {
-			const { session } = active.runtime;
-			const activity = this.activities.get(session.sessionId);
-			if (!this.hasActiveWork(session)) {
-				if (activity?.phase === "active") this.publishStatus(session);
-				continue;
-			}
-			this.publishStatus(session);
-			if (activity?.phase === "active") this.publishActivity(session, activity.label, "active", activity.detail);
-			else this.publishActivity(session, this.activityLabelFromStatus(session), "active");
-		}
-	}
-
-	private activityLabelFromStatus(session: PiAgentSession): string {
-		if (session.isCompacting) return "compacting";
-		if (session.isBashRunning) return "running bash";
-		if (session.isStreaming) return "agent running";
-		if (this.pendingMessageCount(session) > 0) return "queued";
-		return "active";
-	}
-
-	private hasActiveWork(session: PiAgentSession): boolean {
-		return sessionHasActiveWork(session, this.compactionQueuedMessages(session.sessionId).length);
-	}
-
-	private publishActivityForEvent(session: PiAgentSession, event: unknown): void {
-		const eventType = getString(event, "type");
-		if (eventType === undefined) return;
-		if (eventType === "agent_start") {
-			this.publishActivity(session, "agent running", "active");
-			return;
-		}
-		if (eventType === "agent_end") {
-			this.publishActivity(session, "idle", "idle");
-			setTimeout(() => {
-				this.publishActivity(session, "idle", "idle");
-				this.publishStatus(session);
-			}, 250);
-			return;
-		}
-		if (eventType === "turn_end") {
-			this.publishActivity(session, "turn complete", "idle");
-			return;
-		}
-		if (eventType === "message_start") {
-			this.publishActivity(session, "message started", "active");
-			return;
-		}
-		if (eventType === "message_end") {
-			this.publishActivity(session, "message complete", "idle");
-			return;
-		}
-		if (eventType === "message_update") {
-			this.publishActivity(session, "receiving response", "active");
-			return;
-		}
-		if (eventType === "tool_execution_start") {
-			this.publishActivity(session, "running tool", "active", getString(event, "toolName"));
-			return;
-		}
-		if (eventType === "tool_execution_end") {
-			const isError = getBoolean(event, "isError") === true;
-			this.publishActivity(
-				session,
-				isError ? "tool failed" : "tool complete",
-				isError ? "error" : "idle",
-				getString(event, "toolName"),
-			);
-			return;
-		}
-		if (eventType === "bash_execution_start") {
-			this.publishActivity(session, "running bash", "active");
-			return;
-		}
-		if (eventType === "bash_execution_end") {
-			this.publishActivity(session, "bash complete", "idle");
-			return;
-		}
-		if (this.hasActiveWork(session)) this.publishActivity(session, eventType.replaceAll("_", " "), "active");
-	}
-
-	private publishActivity(
-		session: PiAgentSession,
-		label: string,
-		phase: "active" | "idle" | "error",
-		detail?: string,
-	): void {
-		const at = new Date().toISOString();
-		const stored = detail === undefined ? { phase, label, at } : { phase, label, detail, at };
-		this.activities.set(session.sessionId, stored);
-		const activity =
-			detail === undefined
-				? { sessionId: session.sessionId, phase, label, at }
-				: { sessionId: session.sessionId, phase, label, detail, at };
-		this.workspaceActivity?.applySessionActivity(session.sessionManager.getCwd(), activity);
-		this.events.publish(session.sessionId, { type: "activity.update", activity });
-		this.events.publishGlobal({ type: "activity.update", activity });
-	}
-
-	private publishStatus(session: PiAgentSession): void {
-		const status = this.statusFromSession(session);
-		this.clearStaleActiveActivity(session);
-		this.workspaceActivity?.applySessionStatus(session.sessionManager.getCwd(), status);
-		this.events.publish(session.sessionId, { type: "status.update", status });
-		this.events.publishGlobal({ type: "status.update", status });
-	}
-
-	private clearStaleActiveActivity(session: PiAgentSession): void {
-		const current = this.activities.get(session.sessionId);
-		if (current?.phase !== "active" || this.hasActiveWork(session)) return;
-		const at = new Date().toISOString();
-		const stored = { phase: "idle" as const, label: "idle", at };
-		this.activities.set(session.sessionId, stored);
-		const activity = { sessionId: session.sessionId, ...stored };
-		this.events.publish(session.sessionId, { type: "activity.update", activity });
-		this.events.publishGlobal({ type: "activity.update", activity });
-	}
-
-	private statusFromSession(session: PiAgentSession): ClientSessionStatus {
-		const stats = session.getSessionStats();
-		const model = session.model === undefined ? undefined : modelToClientModel(session.model);
-		const contextUsage = session.getContextUsage();
-		return {
-			sessionId: session.sessionId,
-			...(model === undefined ? {} : { model }),
-			thinkingLevel: session.thinkingLevel,
-			isStreaming: session.isStreaming,
-			isCompacting: session.isCompacting,
-			isBashRunning: session.isBashRunning,
-			pendingMessageCount: this.pendingMessageCount(session),
-			queuedMessages: queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)),
-			messageCount: session.messages.length,
-			tokens: stats.tokens,
-			cost: stats.cost,
-			...(contextUsage === undefined ? {} : { contextUsage }),
-		};
-	}
-
-	private pendingMessageCount(session: PiAgentSession): number {
-		return session.pendingMessageCount + this.compactionQueuedMessages(session.sessionId).length;
-	}
-
-	private compactionQueuedMessages(sessionId: string): readonly QueuedPrompt[] {
-		return this.compactionPromptQueues.get(sessionId) ?? [];
-	}
-
 	private hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
-		return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).some(
-			(message) => message.text === text,
-		);
+		return this.statePublisher.queuedMessages(session).some((message) => message.text === text);
 	}
-}
-
-function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel {
-	if (model === undefined) return {};
-	const name = getString(model, "name");
-	const reasoning = getProperty(model, "reasoning");
-	return {
-		provider: model.provider,
-		id: model.id,
-		...(name === undefined ? {} : { name }),
-		contextWindow: model.contextWindow,
-		...(reasoning === undefined ? {} : { reasoning }),
-	};
 }
 
 function clientSessionFromListEntry(session: PiSessionListEntry): ClientSession {
@@ -1068,17 +832,6 @@ async function clearParentSession(sessionFile: string): Promise<void> {
 
 function clearSessionQueue(session: PiAgentSession): void {
 	session.clearQueue();
-}
-
-function queuedMessagesFromSession(
-	session: PiAgentSession,
-	extraQueuedMessages: readonly QueuedPrompt[] = [],
-): { kind: "steer" | "followUp"; text: string }[] {
-	return [
-		...session.getSteeringMessages().map((text) => ({ kind: "steer" as const, text })),
-		...session.getFollowUpMessages().map((text) => ({ kind: "followUp" as const, text })),
-		...extraQueuedMessages,
-	];
 }
 
 function userTextMessage(text: string): { role: "user"; content: string } {
