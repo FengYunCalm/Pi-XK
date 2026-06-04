@@ -97,9 +97,10 @@ export class AppNavigationPanel extends LitElement {
 	}
 
 	static override styles = css`
-    :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; font: 14px var(--pi-font-ui, system-ui, sans-serif); }
     :host([collapsible]) { flex: 1 1 auto; }
-    header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); background: color-mix(in srgb, var(--pi-bg) 88%, var(--pi-surface)); }
+    strong { color: var(--pi-text-bright); font-size: 13px; letter-spacing: 0; }
     .header-actions { display: flex; align-items: center; gap: 8px; }
     project-list, workspace-list { flex: 0 0 auto; max-height: 26%; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
     session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
@@ -109,6 +110,8 @@ export class AppNavigationPanel extends LitElement {
     :host([collapsible]) project-list[collapsed],
     :host([collapsible]) workspace-list[collapsed],
     :host([collapsible]) session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+    button:hover { border-color: color-mix(in srgb, var(--pi-accent-border) 70%, var(--pi-border)); background: var(--pi-surface-hover); }
+    button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
   `;
 }

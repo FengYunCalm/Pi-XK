@@ -59,19 +59,23 @@ export interface CompletionItem {
 
 export const appStyles = css`
   /* Mobile browsers already subtract browser controls from 100dvh; reserve bottom safe area only in standalone PWA modes. */
-  :host { --pi-app-safe-area-bottom: 0px; position: fixed; top: 0; right: 0; left: 0; display: block; height: 100dvh; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: 14px system-ui, sans-serif; }
+  :host { --pi-app-safe-area-bottom: 0px; --pi-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pi-font-code: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; position: fixed; top: 0; right: 0; left: 0; display: block; height: 100dvh; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: 14px var(--pi-font-ui); }
   :host([pwa-display-mode]) { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   }
-  .shell { --navigation-panel-width: 340px; --workspace-panel-width: minmax(360px, 42vw); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(420px, 1fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
+  .skip-link { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 10001; transform: translateY(calc(-100% - 16px)); border: 1px solid var(--pi-accent-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text-bright); padding: 8px 10px; text-decoration: none; box-shadow: 0 12px 30px var(--pi-shadow); transition: transform .16s ease; }
+  .skip-link:focus { transform: translateY(0); outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+  .shell { --navigation-panel-width: 340px; --workspace-panel-width: minmax(360px, 42vw); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(420px, 1fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; background: var(--pi-bg); }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
-  header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+  header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); background: color-mix(in srgb, var(--pi-bg) 88%, var(--pi-surface)); }
   .header-actions { display: flex; align-items: center; gap: 8px; }
   project-list, workspace-list { flex: 0 0 auto; max-height: 26%; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
   session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  main:focus { outline: none; }
+  main:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
   .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: none; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
   .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
   .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -91,7 +95,7 @@ export const appStyles = css`
   .app-refresh-menu { position: fixed; z-index: 10000; box-sizing: border-box; min-width: min(170px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); overflow-wrap: anywhere; }
   .app-refresh-menu button { display: block; width: 100%; border: 0; background: transparent; color: var(--pi-text); text-align: left; white-space: normal; overflow-wrap: anywhere; }
   .app-refresh-menu button:hover, .app-refresh-menu button:focus { background: var(--pi-selection-bg); }
-  .context-chip { flex: 0 0 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 4px 8px; font: inherit; text-align: left; }
+  .context-chip { flex: 0 0 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 4px 8px; font: inherit; text-align: left; transition: background .16s ease, border-color .16s ease, color .16s ease; }
   .context-chip:hover { background: var(--pi-surface-hover); }
   .context-chip:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
   .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
@@ -111,7 +115,7 @@ export const appStyles = css`
   .navigation-panel-edge, .workspace-panel-edge { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
   .navigation-panel-edge { grid-column: 2; }
   .workspace-panel-edge { grid-column: 4; }
-  .navigation-panel-edge-button, .workspace-panel-edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
+  .navigation-panel-edge-button, .workspace-panel-edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; transition: transform .16s ease, background .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease; }
   .navigation-panel-edge-button:hover, .navigation-panel-edge-button:focus-visible, .workspace-panel-edge-button:hover, .workspace-panel-edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
   .shell.navigation-panel-collapsed .navigation-panel-edge-button { transform: translateX(calc(50% - .5px)); }
   .shell.workspace-panel-collapsed .workspace-panel-edge-button { transform: translateX(calc(-50% + .5px)); }
@@ -160,14 +164,20 @@ export const appStyles = css`
   status-bar { flex: 0 0 auto; }
   chat-view { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   prompt-editor, chat-composer { flex: 0 0 auto; }
-  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease; }
+  button:hover { border-color: color-mix(in srgb, var(--pi-accent-border) 72%, var(--pi-border)); background: var(--pi-surface-hover); }
+  button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
   .empty { margin: auto; color: var(--pi-muted); }
   .error { padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .001ms !important; }
+  }
   @keyframes app-refresh-spin { to { transform: rotate(360deg); } }
 `;
 
 export const workspacePanelStyles = css`
-  :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: 13px system-ui, sans-serif; }
+  :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: 13px var(--pi-font-ui, system-ui, sans-serif); }
   header { flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); }
   .workspace-header-scroll-frame { position: relative; min-width: 0; background: var(--pi-bg); }
   .workspace-header-scroll-frame::before, .workspace-header-scroll-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
@@ -177,8 +187,10 @@ export const workspacePanelStyles = css`
   .workspace-header-strip { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
   .tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; }
   .tabs button { flex: 0 0 auto; white-space: nowrap; }
-  button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
-  button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+  button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+  button:hover { border-color: color-mix(in srgb, var(--pi-accent-border) 70%, var(--pi-border)); background: var(--pi-surface-hover); }
+  button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+  button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
   .tab-badge { display: inline-block; min-width: 14px; border: 1px solid var(--pi-success-border); border-radius: 999px; background: var(--pi-success-surface); color: var(--pi-success); padding: 0 5px; font-size: 11px; line-height: 16px; text-align: center; }
   .panel-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .empty-state { box-sizing: border-box; width: min(100%, 380px); margin: auto; padding: 24px; display: grid; gap: 8px; color: var(--pi-muted); text-align: center; }
@@ -213,17 +225,19 @@ export const workspacePanelStyles = css`
   code-viewer { flex: 1 1 auto; min-height: 0; }
   .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
   .image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid var(--pi-border-muted); border-radius: 8px; background-color: var(--pi-surface); background-image: linear-gradient(45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; box-shadow: 0 8px 24px var(--pi-shadow-soft); }
-  pre { margin: 0; padding: 10px; overflow: auto; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre { margin: 0; padding: 10px; overflow: auto; font: 12px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   p { margin: 10px; }
 `;
 
 export const listStyles = css`
-  :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); }
   :host([collapsed]) { flex: 0 0 auto; min-height: auto; overflow: hidden; }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
-  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+  button:hover { border-color: color-mix(in srgb, var(--pi-accent-border) 70%, var(--pi-border)); background: var(--pi-surface-hover); }
+  button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
   section > button { display: block; width: 100%; text-align: left; margin: 6px 0; }
   .subheading { margin-top: 14px; }
   .section-toggle { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; width: 100%; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; text-align: left; text-transform: inherit; }
@@ -235,7 +249,7 @@ export const listStyles = css`
 	.action-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: 6px 0; cursor: pointer; }
 	.action-row:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; border-radius: 8px; }
 	.action-row.selected .action-main, .action-row.selected .action-menu-toggle { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-	.action-main { box-sizing: border-box; min-width: 0; width: 100%; border: 1px solid var(--pi-border); border-top-right-radius: 0; border-bottom-right-radius: 0; border-top-left-radius: 8px; border-bottom-left-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px 7px calc(9px + var(--depth, 0) * 16px); text-align: left; }
+	.action-main { box-sizing: border-box; min-width: 0; width: 100%; border: 1px solid var(--pi-border); border-top-right-radius: 0; border-bottom-right-radius: 0; border-top-left-radius: 8px; border-bottom-left-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px 7px calc(9px + var(--depth, 0) * 16px); text-align: left; transition: background .16s ease, border-color .16s ease, color .16s ease; }
   .action-name { display: -webkit-box; max-height: 2.5em; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .action-row:not(.selected):hover .action-main { background: var(--pi-surface-hover); }
   .workspace-row .action-main { border-radius: 8px 0 0 8px; }
@@ -277,7 +291,7 @@ export const listStyles = css`
 `;
 
 export const chatStyles = css`
-  :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .chat { height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px 16px 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
@@ -305,7 +319,7 @@ export const chatStyles = css`
   .group-msg.system { color: var(--pi-danger); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 0 14px; color: var(--pi-muted); font-size: 12px; text-align: center; }
-  .history-load-button { border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text-secondary); padding: 5px 12px; font: 12px system-ui, sans-serif; cursor: pointer; }
+  .history-load-button { border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text-secondary); padding: 5px 12px; font: 12px var(--pi-font-ui, system-ui, sans-serif); cursor: pointer; }
   .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   .history-load-button:disabled { cursor: default; opacity: .55; }
   .queued-messages { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: 8px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--pi-warning-border); border-radius: 10px; background: var(--pi-warning-surface); color: var(--pi-text); overflow: hidden; }
@@ -331,12 +345,12 @@ export const chatStyles = css`
   .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 8px; padding: 7px 0 6px; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; }
   .msg-actions { display: inline-flex; gap: 6px; opacity: 0; transition: opacity .12s ease; }
-  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px system-ui, sans-serif; line-height: 1; cursor: pointer; }
+  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px var(--pi-font-ui, system-ui, sans-serif); line-height: 1; cursor: pointer; }
   .msg-action:hover, .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   .label { display: block; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
   .msg-header .label { margin: 0; }
-  .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: 11px system-ui, sans-serif; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .12s ease, max-width .12s ease; cursor: pointer; user-select: text; -webkit-user-select: text; }
+  .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: 11px var(--pi-font-ui, system-ui, sans-serif); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .12s ease, max-width .12s ease; cursor: pointer; user-select: text; -webkit-user-select: text; }
   .msg:hover > .msg-header .msg-meta, .msg:focus-within > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
   .msg-meta:focus { outline: 1px solid var(--pi-border); outline-offset: 3px; border-radius: 4px; }
   @media (hover: none) {
@@ -358,7 +372,7 @@ export const chatStyles = css`
   .skill-invocation > small, .skill-read > small { display: block; margin: 6px 0 0; color: var(--pi-muted); }
   summary { cursor: pointer; color: var(--pi-muted); }
   pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-  .shell-output { color: var(--pi-text); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
+  .shell-output { color: var(--pi-text); font: 13px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
 `;
 
@@ -369,12 +383,12 @@ export const formattedTextStyles = css`
   :is(p, ul, ol, pre, blockquote, table, .code-block-wrapper):last-child { margin-bottom: 0; }
   ul, ol { padding-left: 22px; }
   li + li { margin-top: 3px; }
-  code { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 1px 4px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 1px 4px; font: 13px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
   .code-block-wrapper { position: relative; }
   .code-block-wrapper pre { margin: 0; padding-right: 40px; }
   pre { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 10px; overflow-x: auto; overflow-y: hidden; }
   pre code { border: 0; padding: 0; background: transparent; }
-  .code-copy-button { position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px system-ui, sans-serif; line-height: 1; cursor: pointer; }
+  .code-copy-button { position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px var(--pi-font-ui, system-ui, sans-serif); line-height: 1; cursor: pointer; }
   .code-copy-button:hover, .code-copy-button:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   blockquote { border-left: 3px solid var(--pi-border); padding-left: 10px; color: var(--pi-muted); }
   a { color: var(--pi-accent); }
@@ -390,7 +404,7 @@ export const formattedTextStyles = css`
 `;
 
 export const statusBarStyles = css`
-  :host { display: block; color: var(--pi-muted); font: 12px system-ui, sans-serif; }
+  :host { display: block; color: var(--pi-muted); font: 12px var(--pi-font-ui, system-ui, sans-serif); }
   .bar { display: flex; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { overflow: hidden; text-overflow: ellipsis; }
   .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
@@ -418,15 +432,15 @@ export const autocompleteStyles = css`
 `;
 
 export const commandPickerStyles = css`
-  :host { position: fixed; inset: 0; z-index: 10; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  :host { position: fixed; inset: 0; z-index: 10; color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); }
   .backdrop { display: grid; place-items: center; width: 100%; height: 100%; background: var(--pi-overlay); }
   section { width: min(720px, calc(100vw - 40px)); max-height: min(640px, calc(100vh - 40px)); display: flex; flex-direction: column; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-bg); box-shadow: 0 20px 60px var(--pi-shadow-strong); overflow: hidden; }
   header { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--pi-border); }
   .options { min-height: 0; overflow: auto; outline: none; }
   button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
   header button { font-size: 20px; color: var(--pi-muted); }
-  input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: 14px system-ui, sans-serif; padding: 8px 10px; outline: none; }
-  input:focus { border-color: var(--pi-accent); }
+  input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); padding: 8px 10px; outline: none; }
+  input:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 32%, transparent); }
   .options button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
   .options button.selected, .options button:hover { background: var(--pi-selection-bg); }
   small { display: block; margin-top: 4px; color: var(--pi-muted); }
@@ -434,11 +448,11 @@ export const commandPickerStyles = css`
 `;
 
 export const actionPaletteStyles = css`
-  :host { position: fixed; inset: 0; z-index: 20; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  :host { position: fixed; inset: 0; z-index: 20; color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); }
   .backdrop { --palette-top: min(12dvh, 90px); --palette-bottom: max(20px, env(safe-area-inset-bottom)); display: grid; align-items: start; justify-items: center; width: 100%; height: 100dvh; background: var(--pi-overlay); padding: var(--palette-top) 20px var(--palette-bottom); box-sizing: border-box; overflow: hidden; }
   section { width: min(720px, 100%); max-height: min(640px, calc(100dvh - var(--palette-top) - var(--palette-bottom))); display: flex; flex-direction: column; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-bg); box-shadow: 0 20px 60px var(--pi-shadow-strong); overflow: hidden; }
   header { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--pi-border); }
-  input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: 16px system-ui, sans-serif; padding: 8px; }
+  input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: 16px var(--pi-font-ui, system-ui, sans-serif); padding: 8px; }
   input::placeholder { color: var(--pi-dim); }
   button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
   header button { color: var(--pi-muted); font-size: 22px; padding: 2px 8px; }
@@ -449,12 +463,12 @@ export const actionPaletteStyles = css`
   strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   small { display: block; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .group { grid-column: 1 / -1; font-size: 12px; }
-  kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
+  kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: nowrap; }
   .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
 `;
 
 export const promptEditorStyles = css`
-  :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: 14px var(--pi-font-ui, system-ui, sans-serif); }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px; border-top: 1px solid var(--pi-border); }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
   .editor-wrap { position: relative; min-width: 0; }
@@ -463,16 +477,18 @@ export const promptEditorStyles = css`
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .select-model { max-width: min(42vw, 320px); }
   .select-thinking { max-width: 110px; }
-  textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: 8px; border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: 16px/1.4 system-ui, sans-serif; }
+  textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: 8px; border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: 16px/1.4 var(--pi-font-ui, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: 8px; }
-  .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: system-ui, sans-serif; line-height: 1.4; }
+  .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: var(--pi-font-ui, system-ui, sans-serif); line-height: 1.4; }
   .markdown-editor .cm-content { min-height: 38px; padding: 8px; caret-color: var(--pi-text); }
   .markdown-editor .cm-line { padding: 0; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
   .markdown-editor .cm-focused { outline: none; }
   .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
   .mode-hint { position: absolute; right: 8px; bottom: 8px; max-width: calc(100% - 16px); border: 1px solid var(--pi-success-border); border-radius: 999px; background: var(--pi-success-surface); color: var(--pi-success); padding: 2px 8px; font-size: 12px; pointer-events: none; }
-  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+  button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+  button:hover { border-color: color-mix(in srgb, var(--pi-accent-border) 70%, var(--pi-border)); background: var(--pi-surface-hover); }
+  button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
   @media (max-width: 640px) {
     footer { gap: 8px; padding: 8px; }

@@ -894,13 +894,14 @@ export class PiWebApp extends LitElement {
 	override render() {
 		const state = this.state;
 		return html`
+      <a class="skip-link" href="#main-workbench">Skip to workbench</a>
       <div class=${this.panelCollapse.shellClass(state.mainView)}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
         ${this.renderNavigationPanelEdgeControl()}
-        <main class=${mainViewClass(state.mainView)}>
+        <main id="main-workbench" class=${mainViewClass(state.mainView)} tabindex="-1" aria-label="Pi Web workbench">
           ${this.renderContextBar()}
           ${this.renderMobileMainTabs()}
-          ${state.error ? html`<div class="error">${state.error}</div>` : null}
+          ${state.error ? html`<div class="error" role="alert">${state.error}</div>` : null}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel(true) : null}</div>
           ${
 					state.selectedSession
