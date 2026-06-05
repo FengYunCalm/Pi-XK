@@ -11,10 +11,23 @@ export class AppPanelEdgeControl extends LitElement {
 	@property() expandLabel = "Expand panel";
 	@property() collapseLabel = "Collapse panel";
 	@property({ attribute: false }) onToggle?: () => void;
+	@property({ attribute: false }) onResizeStart?: (clientX: number) => void;
+	@property({ attribute: false }) onResizeMove?: (clientX: number) => void;
+	@property({ attribute: false }) onResizeEnd?: () => void;
+	private dragging = false;
+	private readonly onWindowPointerMove = (event: PointerEvent) => {
+		if (!this.dragging) return;
+		event.preventDefault();
+		this.onResizeMove?.(event.clientX);
+	};
+	private readonly onWindowPointerUp = () => {
+		this.stopDrag();
+	};
 
 	override render() {
 		const label = this.collapsed ? this.expandLabel : this.collapseLabel;
 		return html`
+      <div class="resize-handle" aria-hidden="true" @pointerdown=${this.startDrag}></div>
       <button
         type="button"
         class="edge-button"
@@ -29,6 +42,30 @@ export class AppPanelEdgeControl extends LitElement {
     `;
 	}
 
+	override disconnectedCallback(): void {
+		this.stopDrag();
+		super.disconnectedCallback();
+	}
+
+	private readonly startDrag = (event: PointerEvent) => {
+		if (this.collapsed || event.button !== 0) return;
+		event.preventDefault();
+		this.dragging = true;
+		this.setAttribute("dragging", "");
+		this.onResizeStart?.(event.clientX);
+		window.addEventListener("pointermove", this.onWindowPointerMove);
+		window.addEventListener("pointerup", this.onWindowPointerUp, { once: true });
+	};
+
+	private stopDrag(): void {
+		if (!this.dragging) return;
+		this.dragging = false;
+		this.removeAttribute("dragging");
+		window.removeEventListener("pointermove", this.onWindowPointerMove);
+		window.removeEventListener("pointerup", this.onWindowPointerUp);
+		this.onResizeEnd?.();
+	}
+
 	private renderIcon() {
 		const direction = this.iconDirection();
 		const path = direction === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
@@ -41,11 +78,14 @@ export class AppPanelEdgeControl extends LitElement {
 	}
 
 	static override styles = css`
-    :host { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
+	    :host { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: transparent; z-index: 2; }
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
-    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
-    .edge-button:hover, .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
+	    .resize-handle { position: absolute; inset: 0; cursor: col-resize; touch-action: none; }
+	    :host([collapsed]) .resize-handle { display: none; }
+	    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; transition: transform .16s ease, background .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease; }
+	    .edge-button:hover, .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
+	    :host([dragging]) .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
     :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }
     .edge-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }

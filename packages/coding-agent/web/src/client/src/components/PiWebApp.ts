@@ -416,6 +416,15 @@ export class PiWebApp extends LitElement {
         .onToggle=${() => {
 				this.panelCollapse.toggleNavigationPanel();
 			}}
+        .onResizeStart=${(clientX: number) => {
+				this.panelCollapse.startResize("navigation", clientX);
+			}}
+        .onResizeMove=${(clientX: number) => {
+				this.panelCollapse.resize(clientX);
+			}}
+        .onResizeEnd=${() => {
+				this.panelCollapse.endResize();
+			}}
       ></app-panel-edge-control>
     `;
 	}
@@ -430,6 +439,15 @@ export class PiWebApp extends LitElement {
         .collapsed=${this.panelCollapse.workspacePanelCollapsed}
         .onToggle=${() => {
 				this.panelCollapse.toggleWorkspacePanel();
+			}}
+        .onResizeStart=${(clientX: number) => {
+				this.panelCollapse.startResize("workspace", clientX);
+			}}
+        .onResizeMove=${(clientX: number) => {
+				this.panelCollapse.resize(clientX);
+			}}
+        .onResizeEnd=${() => {
+				this.panelCollapse.endResize();
 			}}
       ></app-panel-edge-control>
     `;
@@ -895,7 +913,7 @@ export class PiWebApp extends LitElement {
 		const state = this.state;
 		return html`
       <a class="skip-link" href="#main-workbench">Skip to workbench</a>
-      <div class=${this.panelCollapse.shellClass(state.mainView)}>
+      <div class=${this.panelCollapse.shellClass(state.mainView)} style=${this.panelCollapse.shellStyle()}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
         ${this.renderNavigationPanelEdgeControl()}
         <main id="main-workbench" class=${mainViewClass(state.mainView)} tabindex="-1" aria-label="Pi Web workbench">
