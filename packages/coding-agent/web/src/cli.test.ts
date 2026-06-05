@@ -1,18 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { createServer } from "node:net";
-import { assertPortAvailable, browserOpenCommand, parseForegroundOptions, webInterfaceUrl, webInterfaceUrlWithToken } from "./cli.ts";
+import {
+	assertPortAvailable,
+	browserOpenCommand,
+	parseForegroundOptions,
+	webInterfaceProbeUrl,
+	webInterfaceUrl,
+	webInterfaceUrlWithToken,
+} from "./cli.ts";
 
 describe("Pi Web CLI", () => {
 	it("parses foreground options with silent logs by default", () => {
 		expect(parseForegroundOptions([])).toEqual({ host: "127.0.0.1", port: "8504", printLogs: false });
 	});
 
-	it("parses host, port, config, and print-log options", () => {
-		expect(parseForegroundOptions(["--host", "0.0.0.0", "--port=9000", "--config", "./web.json", "--print-logs"])).toEqual({
+	it("parses host, hostname, port, config, and print-log options", () => {
+		expect(
+			parseForegroundOptions([
+				"--host",
+				"0.0.0.0",
+				"--hostname",
+				"pi.tailnet.ts.net",
+				"--port=9000",
+				"--config",
+				"./web.json",
+				"--print-logs",
+			]),
+		).toEqual({
 			host: "0.0.0.0",
+			hostname: "pi.tailnet.ts.net",
 			port: "9000",
 			config: "./web.json",
 			printLogs: true,
+		});
+	});
+
+	it("parses hostname with equals syntax", () => {
+		expect(parseForegroundOptions(["--host=0.0.0.0", "--hostname=100.64.1.2"])).toEqual({
+			host: "0.0.0.0",
+			hostname: "100.64.1.2",
+			port: "8504",
+			printLogs: false,
 		});
 	});
 
@@ -21,9 +49,23 @@ describe("Pi Web CLI", () => {
 		expect(webInterfaceUrl({ host: "::1", port: "8504" })).toBe("http://[::1]:8504/");
 	});
 
+	it("formats a hostname URL separately from the listen host", () => {
+		expect(webInterfaceUrl({ host: "0.0.0.0", hostname: "pi.tailnet.ts.net", port: "8504" })).toBe(
+			"http://pi.tailnet.ts.net:8504/",
+		);
+		expect(webInterfaceUrl({ host: "0.0.0.0", hostname: "fd7a:115c:a1e0::1", port: "8504" })).toBe(
+			"http://[fd7a:115c:a1e0::1]:8504/",
+		);
+	});
+
+	it("keeps readiness probes local for wildcard listen hosts", () => {
+		expect(webInterfaceProbeUrl({ host: "0.0.0.0", port: "8504" })).toBe("http://127.0.0.1:8504/");
+		expect(webInterfaceProbeUrl({ host: "::", port: "8504" })).toBe("http://127.0.0.1:8504/");
+	});
+
 	it("adds an access token to the browser URL when needed", () => {
-		expect(webInterfaceUrlWithToken({ host: "0.0.0.0", port: "8504" }, "secret")).toBe(
-			"http://127.0.0.1:8504/?token=secret",
+		expect(webInterfaceUrlWithToken({ host: "0.0.0.0", hostname: "pi.tailnet.ts.net", port: "8504" }, "secret")).toBe(
+			"http://pi.tailnet.ts.net:8504/?token=secret",
 		);
 	});
 

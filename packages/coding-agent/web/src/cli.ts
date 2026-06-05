@@ -16,6 +16,7 @@ import {
 
 interface ForegroundOptions {
 	host: string;
+	hostname?: string;
 	port: string;
 	config?: string;
 	printLogs: boolean;
@@ -37,6 +38,13 @@ export function parseForegroundOptions(args: string[]): ForegroundOptions {
 			i += 1;
 		} else if (arg.startsWith("--host=")) {
 			options.host = arg.slice("--host=".length);
+		} else if (arg === "--hostname") {
+			const value = args[i + 1];
+			if (value === undefined) throw new Error("--hostname requires a value");
+			options.hostname = value;
+			i += 1;
+		} else if (arg.startsWith("--hostname=")) {
+			options.hostname = arg.slice("--hostname=".length);
 		} else if (arg === "--port") {
 			const value = args[i + 1];
 			if (value === undefined) throw new Error("--port requires a value");
@@ -58,14 +66,32 @@ export function parseForegroundOptions(args: string[]): ForegroundOptions {
 	return options;
 }
 
-export function webInterfaceUrl(options: Pick<ForegroundOptions, "host" | "port">): string {
-	const browserHost = options.host === "0.0.0.0" || options.host === "::" ? "127.0.0.1" : options.host;
-	const formattedHost = browserHost.includes(":") && !browserHost.startsWith("[") ? `[${browserHost}]` : browserHost;
-	return `http://${formattedHost}:${options.port}/`;
+export function webInterfaceUrl(options: Pick<ForegroundOptions, "host" | "hostname" | "port">): string {
+	const browserHost = options.hostname ?? localBrowserHost(options.host);
+	return formatWebInterfaceUrl(browserHost, options.port);
 }
 
-export function webInterfaceUrlWithToken(options: Pick<ForegroundOptions, "host" | "port">, token?: string): string {
+export function webInterfaceProbeUrl(options: Pick<ForegroundOptions, "host" | "port">): string {
+	return formatWebInterfaceUrl(localBrowserHost(options.host), options.port);
+}
+
+function localBrowserHost(host: string): string {
+	return host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+}
+
+function formatWebInterfaceUrl(browserHost: string, port: string): string {
+	const formattedHost = browserHost.includes(":") && !browserHost.startsWith("[") ? `[${browserHost}]` : browserHost;
+	return `http://${formattedHost}:${port}/`;
+}
+
+export function webInterfaceUrlWithToken(options: Pick<ForegroundOptions, "host" | "hostname" | "port">, token?: string): string {
 	const url = new URL(webInterfaceUrl(options));
+	if (token !== undefined) url.searchParams.set("token", token);
+	return url.toString();
+}
+
+function webInterfaceProbeUrlWithToken(options: Pick<ForegroundOptions, "host" | "port">, token?: string): string {
+	const url = new URL(webInterfaceProbeUrl(options));
 	if (token !== undefined) url.searchParams.set("token", token);
 	return url.toString();
 }
@@ -108,8 +134,9 @@ async function runForeground(args: string[]): Promise<void> {
 	const options = parseForegroundOptions(args);
 	await assertPortAvailable(options.host, options.port);
 	const configPath = await writeInitialConfig(options);
-	const token = process.env["PI_WEB_TOKEN"] ?? (isLocalHost(options.host) ? undefined : generateAccessToken());
+	const token = process.env["PI_WEB_TOKEN"] ?? (isLocalAccess(options) ? undefined : generateAccessToken());
 	const url = webInterfaceUrlWithToken(options, token);
+	const probeUrl = webInterfaceProbeUrlWithToken(options, token);
 	const sessiondRuntimeDir = await mkdtemp(join(tmpdir(), "pi-web-sessiond-"));
 	const env = {
 		...process.env,
@@ -125,13 +152,14 @@ async function runForeground(args: string[]): Promise<void> {
 	const processes = [sessiond, web];
 	try {
 		try {
-			await waitForWebReady(url, processes);
+			await waitForWebReady(probeUrl, processes);
 		} catch (error) {
 			stopProcesses(processes);
 			throw error;
 		}
-		openBrowser(url);
+		openBrowser(options.hostname === undefined ? url : probeUrl);
 		console.log(`Web interface: ${url}`);
+		if (options.hostname !== undefined) console.log(`Local access: ${probeUrl}`);
 		process.exitCode = await waitForForegroundProcesses(processes);
 	} finally {
 		await rm(sessiondRuntimeDir, { recursive: true, force: true });
@@ -165,6 +193,10 @@ function generateAccessToken(): string {
 
 function isLocalHost(host: string): boolean {
 	return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
+}
+
+function isLocalAccess(options: Pick<ForegroundOptions, "host" | "hostname">): boolean {
+	return isLocalHost(options.host) && (options.hostname === undefined || isLocalHost(options.hostname));
 }
 
 function openBrowser(url: string): void {
@@ -281,7 +313,7 @@ function help(): void {
 	console.log(`Pi Web mode
 
 Usage:
-	pi web [--host 127.0.0.1] [--port 8504] [--config ~/.config/pi-web/config.json] [--print-logs]
+	pi web [--host 127.0.0.1] [--hostname <name-or-ip>] [--port 8504] [--config ~/.config/pi-web/config.json] [--print-logs]
 	pi web doctor
 	pi web version
 
@@ -289,7 +321,14 @@ Start Web mode:
 	pi web
 
 Options:
+	--host         listen address, for example 127.0.0.1 or 0.0.0.0
+	--hostname     browser/display host, for example a Tailscale hostname or 100.x address
+	--port         listen port
+	--config       config file path
 	--print-logs   print server and session logs to stderr/stdout
+
+Tailscale example:
+	pi web --host 0.0.0.0 --hostname your-machine.tailnet.ts.net
 `);
 }
 
