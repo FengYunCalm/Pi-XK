@@ -630,8 +630,8 @@ export class TerminalPanel extends LitElement {
     .command-run-notice.succeeded { border-color: var(--pi-success-border); }
     .command-run-notice.failed { border-color: var(--pi-danger); }
     .command-run-notice p { margin: 3px 0; color: var(--pi-muted); }
-    .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 0 4px; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 0 4px; font: 11px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .command-run-notice button { justify-self: end; max-width: none; }
     .terminal-host { flex: 1 1 auto; min-height: 0; padding: 6px; box-sizing: border-box; overflow: hidden; }
     .terminal-host .xterm { height: 100%; cursor: text; position: relative; user-select: none; }
@@ -644,7 +644,7 @@ export class TerminalPanel extends LitElement {
     .terminal-host .xterm-char-measure-element { display: inline-block; visibility: hidden; position: absolute; top: 0; left: -9999em; line-height: normal; }
     .terminal-host .xterm-accessibility:not(.debug), .terminal-host .xterm-message { position: absolute; inset: 0; z-index: 10; color: transparent; pointer-events: none; }
     .terminal-host .xterm-accessibility-tree:not(.debug) *::selection { color: transparent; }
-    .terminal-host .xterm-accessibility-tree { font-family: monospace; user-select: text; white-space: pre; }
+    .terminal-host .xterm-accessibility-tree { font-family: var(--pi-font-code, monospace); user-select: text; white-space: pre; }
     .terminal-host .xterm-accessibility-tree > div { transform-origin: left; width: fit-content; }
     .terminal-host .live-region { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     .error { flex: 0 0 auto; margin: 0; padding: 8px; color: var(--pi-danger); border-bottom: 1px solid var(--pi-border); background: var(--pi-surface); }

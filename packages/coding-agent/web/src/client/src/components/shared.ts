@@ -59,24 +59,24 @@ export interface CompletionItem {
 
 export const appStyles = css`
   /* Mobile browsers already subtract browser controls from 100dvh; reserve bottom safe area only in standalone PWA modes. */
-  :host { --pi-app-safe-area-bottom: 0px; --pi-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pi-font-code: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; --pi-panel-bg: color-mix(in srgb, var(--pi-surface) 88%, var(--pi-bg)); --pi-panel-bg-strong: color-mix(in srgb, var(--pi-surface) 96%, var(--pi-text) 2%); position: fixed; top: 0; right: 0; left: 0; display: block; height: 100dvh; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: linear-gradient(180deg, color-mix(in srgb, var(--pi-surface) 34%, transparent), transparent 220px), repeating-linear-gradient(90deg, color-mix(in srgb, var(--pi-border-muted) 36%, transparent) 0 1px, transparent 1px 80px), var(--pi-bg); font: 14px var(--pi-font-ui); }
+  :host { --pi-app-safe-area-bottom: 0px; --pi-font-ui: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; --pi-font-code: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; --pi-panel-bg: color-mix(in srgb, var(--pi-surface) 88%, var(--pi-bg)); --pi-panel-bg-strong: color-mix(in srgb, var(--pi-surface) 96%, var(--pi-text) 2%); position: fixed; top: 0; right: 0; left: 0; display: block; height: 100dvh; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: linear-gradient(180deg, color-mix(in srgb, var(--pi-surface) 34%, transparent), transparent 220px), repeating-linear-gradient(90deg, color-mix(in srgb, var(--pi-border-muted) 36%, transparent) 0 1px, transparent 1px 80px), var(--pi-bg); font: 14px var(--pi-font-ui); }
   :host([pwa-display-mode]) { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   }
   .skip-link { position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); z-index: 10001; transform: translateY(calc(-100% - 16px)); border: 1px solid var(--pi-accent-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text-bright); padding: 8px 10px; text-decoration: none; box-shadow: 0 12px 30px var(--pi-shadow); transition: transform .16s ease; }
   .skip-link:focus { transform: translateY(0); outline: 2px solid var(--pi-accent); outline-offset: 2px; }
-  .shell { --navigation-panel-width: 340px; --workspace-panel-width: minmax(360px, 42vw); box-sizing: border-box; display: grid; grid-template-columns: var(--navigation-panel-width) 10px minmax(420px, 1fr) 10px var(--workspace-panel-width); gap: 0; height: 100%; min-height: 0; padding: 8px; background: transparent; }
+  .shell { --navigation-panel-width: 340px; --workspace-panel-width: clamp(380px, 36vw, 620px); box-sizing: border-box; display: grid; grid-template-columns: var(--navigation-panel-width) 10px minmax(420px, 1fr) 10px var(--workspace-panel-width); gap: 0; height: 100%; min-height: 0; padding: 8px; background: transparent; }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-panel-bg); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pi-text-bright) 7%, transparent), 0 16px 40px var(--pi-shadow-soft); }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); background: color-mix(in srgb, var(--pi-bg) 88%, var(--pi-surface)); }
   .header-actions { display: flex; align-items: center; gap: 8px; }
-  project-list, workspace-list { flex: 0 0 auto; max-height: 26%; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
+  project-list, workspace-list { flex: 0 0 auto; max-height: 22%; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
   session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-panel-bg-strong); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pi-text-bright) 7%, transparent), 0 16px 44px var(--pi-shadow-soft); }
   main:focus { outline: none; }
   main:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
-  .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: none; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: color-mix(in srgb, var(--pi-bg) 82%, var(--pi-surface)); }
+  .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: color-mix(in srgb, var(--pi-bg) 82%, var(--pi-surface)); }
   .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
   .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
   .context-bar::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -301,14 +301,14 @@ export const chatStyles = css`
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
   .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
-  .msg { max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--pi-border-muted) 72%, transparent); border-left: 2px solid var(--pi-border); border-radius: 13px; background: color-mix(in srgb, var(--pi-surface) 62%, transparent); overflow: visible; box-shadow: 0 10px 32px color-mix(in srgb, var(--pi-shadow-soft) 62%, transparent); }
+  .msg { width: min(100%, 980px); min-width: 0; box-sizing: border-box; margin: 0 auto 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--pi-border-muted) 72%, transparent); border-left: 2px solid var(--pi-border); border-radius: 13px; background: color-mix(in srgb, var(--pi-surface) 62%, transparent); overflow: visible; box-shadow: 0 10px 32px color-mix(in srgb, var(--pi-shadow-soft) 62%, transparent); }
   .msg.user { border-color: var(--pi-accent-border); border-left-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-selection-bg) 38%, var(--pi-surface)); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
-  .msg.tool-execution-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
+  .msg.tool-execution-shell { width: 100%; padding: 0; border: 0; background: transparent; color: var(--pi-text); box-shadow: none; }
   .msg.system { color: var(--pi-danger); }
   .msg.bash { border-color: var(--pi-success); border-left-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
-  .msg.event-group { padding: 0; border-color: var(--pi-border); background: color-mix(in srgb, var(--pi-bg) 88%, var(--pi-surface)); color: var(--pi-muted); }
+  .msg.event-group { width: 100%; padding: 0; border-color: var(--pi-border); background: color-mix(in srgb, var(--pi-bg) 88%, var(--pi-surface)); color: var(--pi-muted); }
   .msg.event-group.live { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
   .msg.event-group > summary { position: sticky; top: -26px; z-index: 5; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 9px 9px 0 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live > summary { border-bottom-color: var(--pi-success-border); background: var(--pi-success-bg); color: var(--pi-success); }
@@ -323,14 +323,14 @@ export const chatStyles = css`
   .history-load-button { border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text-secondary); padding: 5px 12px; font: 12px var(--pi-font-ui, system-ui, sans-serif); cursor: pointer; }
   .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   .history-load-button:disabled { cursor: default; opacity: .55; }
-  .queued-messages { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: 8px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--pi-warning-border); border-radius: 10px; background: var(--pi-warning-surface); color: var(--pi-text); overflow: hidden; }
+  .queued-messages { width: min(100%, 980px); min-width: 0; box-sizing: border-box; display: grid; gap: 8px; margin: 0 auto 14px; padding: 12px; border: 1px solid var(--pi-warning-border); border-radius: 10px; background: var(--pi-warning-surface); color: var(--pi-text); overflow: hidden; }
   .queued-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .queued-header strong { color: var(--pi-warning); }
   .queued-header small { color: var(--pi-muted); }
   .queued-message { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--pi-border); }
   .queued-message:first-of-type { padding-top: 0; border-top: 0; }
   .queued-kind { color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
-  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
+  .session-activity { width: min(100%, 980px); min-width: 0; box-sizing: border-box; display: grid; gap: 4px; margin: 0 auto 14px; padding: 12px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity.receiving { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
   .session-activity strong { color: var(--pi-purple); }
