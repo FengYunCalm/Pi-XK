@@ -35,9 +35,16 @@ describe("Pi Web CLI", () => {
 			command: "cmd",
 			args: ["/c", "start", "", "http://127.0.0.1:8504/"],
 		});
-		expect(browserOpenCommand("http://127.0.0.1:8504/", "linux")).toEqual({
+		expect(browserOpenCommand("http://127.0.0.1:8504/", "linux", {})).toEqual({
 			command: "xdg-open",
 			args: ["http://127.0.0.1:8504/"],
+		});
+	});
+
+	it("uses the Windows opener from WSL", () => {
+		expect(browserOpenCommand("http://127.0.0.1:8504/", "linux", { WSL_DISTRO_NAME: "Ubuntu" })).toEqual({
+			command: "cmd.exe",
+			args: ["/c", "start", "", "http://127.0.0.1:8504/"],
 		});
 	});
 });

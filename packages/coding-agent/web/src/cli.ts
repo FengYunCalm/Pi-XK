@@ -69,10 +69,19 @@ export function webInterfaceUrlWithToken(options: Pick<ForegroundOptions, "host"
 	return url.toString();
 }
 
-export function browserOpenCommand(url: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+export function browserOpenCommand(
+	url: string,
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): { command: string; args: string[] } {
 	if (platform === "darwin") return { command: "open", args: [url] };
 	if (platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
+	if (isWslEnvironment(env)) return { command: "cmd.exe", args: ["/c", "start", "", url] };
 	return { command: "xdg-open", args: [url] };
+}
+
+function isWslEnvironment(env: NodeJS.ProcessEnv): boolean {
+	return env["WSL_DISTRO_NAME"] !== undefined || env["WSL_INTEROP"] !== undefined;
 }
 
 function runtimeRootPath(): string {

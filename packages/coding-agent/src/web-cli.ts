@@ -11,20 +11,19 @@ interface PiWebCommand {
 	args: string[];
 }
 
-function resolvePiWebCommand(): PiWebCommand {
-	const packageDir = getPackageDir();
-	const distCli = isBunBinary ? join(packageDir, "web", "cli.js") : join(packageDir, "dist", "web", "cli.js");
-	if (existsSync(distCli)) {
-		return { command: isBunBinary ? "node" : process.execPath, args: [distCli] };
-	}
-
+export function resolvePiWebCommand(packageDir = getPackageDir()): PiWebCommand {
 	const sourceCli = join(packageDir, "web", "src", "cli.ts");
-	if (existsSync(sourceCli)) {
+	if (!isBunBinary && existsSync(sourceCli)) {
 		try {
 			return { command: process.execPath, args: [require.resolve("tsx/cli"), sourceCli] };
 		} catch {
-			throw new Error("PI WEB has not been built yet. Run npm run build from the repository root first.");
+			// Fall through to the built entrypoint for packaged installs without tsx.
 		}
+	}
+
+	const distCli = isBunBinary ? join(packageDir, "web", "cli.js") : join(packageDir, "dist", "web", "cli.js");
+	if (existsSync(distCli)) {
+		return { command: isBunBinary ? "node" : process.execPath, args: [distCli] };
 	}
 
 	throw new Error(`PI WEB CLI entrypoint not found. Expected ${distCli}.`);
