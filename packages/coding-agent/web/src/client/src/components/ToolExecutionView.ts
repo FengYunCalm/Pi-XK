@@ -111,13 +111,20 @@ export class ToolExecutionView extends LitElement {
 
 	static override styles = css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; color: var(--pi-text); }
-    .tool-card { display: grid; gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 9px; color: var(--pi-text); }
-    .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
-    .tool-card.success { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
-    .tool-card.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); }
+	    .tool-card { position: relative; display: grid; gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 9px; color: var(--pi-text); animation: tool-card-enter var(--pi-motion-medium, 180ms) var(--pi-ease-emphasized, ease) both; transition: background var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease), box-shadow var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease); }
+	    .tool-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--pi-border); opacity: .8; transition: background var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease), opacity var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease); }
+	    .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-warning) 10%, transparent); }
+	    .tool-card.running::before, .tool-card.pending::before { background: var(--pi-warning); animation: tool-status-pulse 1.4s var(--pi-ease-standard, ease) infinite; }
+	    .tool-card.success { border-color: var(--pi-success-border); background: var(--pi-success-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-success) 10%, transparent); }
+	    .tool-card.success::before { background: var(--pi-success); }
+	    .tool-card.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+	    .tool-card.error::before { background: var(--pi-danger); }
     .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; min-width: 0; }
     .tool-title { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
-    .status-icon { flex: 0 0 auto; color: var(--pi-muted); }
+	    .status-icon { flex: 0 0 auto; color: var(--pi-muted); transition: color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), transform var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
+	    .running .status-icon, .pending .status-icon { color: var(--pi-warning); animation: tool-icon-pulse 1s var(--pi-ease-standard, ease) infinite; }
+	    .success .status-icon { color: var(--pi-success); }
+	    .error .status-icon { color: var(--pi-danger); }
     strong { color: var(--pi-text); }
     .path, .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-accent); font: 13px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .summary { color: var(--pi-muted); font-family: inherit; }
@@ -137,8 +144,8 @@ export class ToolExecutionView extends LitElement {
     .diff-details > summary small { flex: 0 0 auto; color: var(--pi-dim); }
     .diff-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; margin-top: 8px; color: var(--pi-muted); font-size: 12px; }
     .diff-toolbar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    button { border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-text); padding: 3px 7px; font: 12px var(--pi-font-ui, system-ui, sans-serif); cursor: pointer; }
-    button:hover, button:focus { border-color: var(--pi-accent); }
+	    button { border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-text); padding: 3px 7px; font: 12px var(--pi-font-ui, system-ui, sans-serif); cursor: pointer; transition: transform var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), background var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
+	    button:hover, button:focus { transform: translateY(-1px); border-color: var(--pi-accent); background: var(--pi-surface-hover); }
     .diff { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; border: 1px solid var(--pi-border-muted); border-radius: 7px; background: var(--pi-bg); padding: 8px 0; color: var(--pi-muted); font: 12px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; }
     .diff-content { display: block; width: max-content; min-width: 100%; }
     .diff span { display: block; min-height: 1.45em; padding: 0 8px; white-space: pre; }
@@ -149,14 +156,20 @@ export class ToolExecutionView extends LitElement {
     .diff .added { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
     .diff .removed { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
     .show-more { justify-self: start; }
-    @media (max-width: 560px) {
-      .tool-header { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
-      .tool-title { max-width: 100%; }
-      .path, .summary { white-space: normal; overflow-wrap: anywhere; }
-      .tool-meta { flex-wrap: wrap; justify-content: flex-start; }
-      .diff-toolbar { flex-wrap: wrap; }
-    }
-  `;
+	    @media (max-width: 560px) {
+	      .tool-header { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+	      .tool-title { max-width: 100%; }
+	      .path, .summary { white-space: normal; overflow-wrap: anywhere; }
+	      .tool-meta { flex-wrap: wrap; justify-content: flex-start; }
+	      .diff-toolbar { flex-wrap: wrap; }
+	    }
+	    @media (prefers-reduced-motion: reduce) {
+	      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+	    }
+	    @keyframes tool-card-enter { from { opacity: .78; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+	    @keyframes tool-status-pulse { 0%, 100% { opacity: .58; } 50% { opacity: 1; } }
+	    @keyframes tool-icon-pulse { 0%, 100% { transform: scale(.86); opacity: .7; } 50% { transform: scale(1.08); opacity: 1; } }
+	  `;
 }
 
 function pathFromArgs(args: unknown): string | undefined {

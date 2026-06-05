@@ -117,12 +117,14 @@ export class AppPanelEdgeControl extends LitElement {
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
 	    .resize-handle { position: absolute; inset: 0; cursor: col-resize; touch-action: none; outline: none; }
+	    .resize-handle::before { content: ""; position: absolute; top: 50%; left: 50%; width: 2px; height: 34px; border-radius: 999px; background: color-mix(in srgb, var(--pi-border-muted) 70%, transparent); opacity: 0; transform: translate(-50%, -50%) scaleY(.7); transition: opacity var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), transform var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), background var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
+	    .resize-handle:hover::before, .resize-handle:focus-visible::before, :host([dragging]) .resize-handle::before { opacity: 1; transform: translate(-50%, -50%) scaleY(1); background: var(--pi-accent); }
 	    .resize-handle:focus-visible { box-shadow: 0 0 0 2px var(--pi-accent); }
 	    :host([collapsed]) .resize-handle { display: none; }
-	    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; transition: transform .16s ease, background .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease; }
+	    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; box-shadow: 0 8px 18px color-mix(in srgb, var(--pi-shadow-soft) 72%, transparent); transition: transform var(--pi-motion-medium, 180ms) var(--pi-ease-emphasized, ease), background var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), opacity var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), box-shadow var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
 	    .edge-button:hover, .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
 	    .resize-handle:focus-visible + .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; outline: 2px solid var(--pi-accent); outline-offset: 2px; }
-	    :host([dragging]) .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; }
+	    :host([dragging]) .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pi-accent) 18%, transparent), 0 10px 24px var(--pi-shadow); }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
     :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }
     .edge-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -132,6 +134,9 @@ export class AppPanelEdgeControl extends LitElement {
     }
     @media (max-width: 760px) {
       :host([side="navigation"]) { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
     }
   `;
 }

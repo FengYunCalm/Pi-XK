@@ -617,13 +617,15 @@ export class TerminalPanel extends LitElement {
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
-    button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
-    .terminal-tab { flex: 0 0 auto; display: inline-flex; align-items: stretch; min-width: 0; max-width: 200px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); overflow: hidden; }
-    .terminal-tab.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .terminal-select, .terminal-close { border: 0; border-radius: 0; background: transparent; }
+	    button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; transition: transform var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), background var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
+	    button:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--pi-accent-border) 70%, var(--pi-border)); background: var(--pi-surface-hover); }
+	    .terminal-tab { flex: 0 0 auto; display: inline-flex; align-items: stretch; min-width: 0; max-width: 200px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); overflow: hidden; transition: transform var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), background var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease), box-shadow var(--pi-motion-fast, 120ms) var(--pi-ease-standard, ease); }
+	    .terminal-tab:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--pi-accent-border) 68%, var(--pi-border)); }
+	    .terminal-tab.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); box-shadow: inset 0 -2px 0 var(--pi-accent), 0 6px 18px color-mix(in srgb, var(--pi-accent) 10%, transparent); }
+	    .terminal-select, .terminal-close { border: 0; border-radius: 0; background: transparent; }
     .terminal-select { flex: 1 1 auto; max-width: none; padding: 5px 4px 5px 7px; }
     .terminal-close { flex: 0 0 auto; width: 24px; max-width: none; justify-content: center; padding: 0; color: var(--pi-muted); }
-    .terminal-close:hover, .terminal-close:focus-visible { color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); }
+	    .terminal-close:hover, .terminal-close:focus-visible { transform: none; color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); }
     button.new { flex: 0 0 auto; color: var(--pi-muted); }
     .soft-keys-toggle { flex: 0 0 auto; }
     .soft-keys-toggle .keyboard-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -632,10 +634,10 @@ export class TerminalPanel extends LitElement {
     button small:hover { color: var(--pi-danger); }
     button.danger { color: var(--pi-danger); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); }
-    .command-run-notice.running { border-color: var(--pi-warning-border); }
-    .command-run-notice.succeeded { border-color: var(--pi-success-border); }
-    .command-run-notice.failed { border-color: var(--pi-danger); }
+	    .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); animation: terminal-notice-enter var(--pi-motion-medium, 180ms) var(--pi-ease-emphasized, ease) both; transition: background var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease), border-color var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease), box-shadow var(--pi-motion-medium, 180ms) var(--pi-ease-standard, ease); }
+	    .command-run-notice.running { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); box-shadow: inset 3px 0 0 var(--pi-warning); }
+	    .command-run-notice.succeeded { border-color: var(--pi-success-border); background: var(--pi-success-bg); box-shadow: inset 3px 0 0 var(--pi-success); }
+	    .command-run-notice.failed { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); box-shadow: inset 3px 0 0 var(--pi-danger); }
     .command-run-notice p { margin: 3px 0; color: var(--pi-muted); }
     .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 0 4px; font: 11px var(--pi-font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
@@ -655,9 +657,13 @@ export class TerminalPanel extends LitElement {
     .terminal-host .xterm-accessibility-tree > div { transform-origin: left; width: fit-content; }
     .terminal-host .live-region { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     .error { flex: 0 0 auto; margin: 0; padding: 8px; color: var(--pi-danger); border-bottom: 1px solid var(--pi-border); background: var(--pi-surface); }
-    .muted { margin: 10px; color: var(--pi-muted); }
-    .xterm { height: 100%; }
-  `;
+	    .muted { margin: 10px; color: var(--pi-muted); }
+	    .xterm { height: 100%; }
+	    @media (prefers-reduced-motion: reduce) {
+	      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+	    }
+	    @keyframes terminal-notice-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+	  `;
 }
 
 interface TerminalSize {
