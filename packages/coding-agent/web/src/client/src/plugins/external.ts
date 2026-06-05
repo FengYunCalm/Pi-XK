@@ -19,7 +19,7 @@ export async function loadExternalPlugins(
 	const registrations: PiWebPluginRegistration[] = [];
 	for (const entry of manifest.plugins) {
 		try {
-			const moduleUrl = withPiWebTokenQuery(new URL(entry.module, new URL(manifestUrl, window.location.href)).toString());
+			const moduleUrl = pluginModuleUrl(entry.module, manifestUrl);
 			const module: unknown = await import(/* @vite-ignore */ moduleUrl);
 			const plugin = parsePluginModule(module, moduleUrl);
 			registrations.push({ id: entry.id, plugin });
@@ -30,11 +30,24 @@ export async function loadExternalPlugins(
 	return registrations;
 }
 
+function pluginModuleUrl(modulePath: string, manifestUrl: string): string {
+	const moduleUrl = sameOriginPluginUrl(modulePath, new URL(manifestUrl, window.location.href), "module");
+	return withPiWebTokenQuery(moduleUrl.toString());
+}
+
 async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {
-	const response = await fetch(withPiWebTokenQuery(manifestUrl), { cache: "no-store" });
+	const response = await fetch(withPiWebTokenQuery(sameOriginPluginUrl(manifestUrl, window.location.href, "manifest").toString()), {
+		cache: "no-store",
+	});
 	if (response.status === 404) return undefined;
 	if (!response.ok) throw new Error(`Failed to load plugin manifest: ${response.statusText}`);
 	return parseManifest(await response.json());
+}
+
+function sameOriginPluginUrl(path: string, base: string | URL, kind: "manifest" | "module"): URL {
+	const url = new URL(path, base);
+	if (url.origin !== window.location.origin) throw new Error(`Cross-origin PI WEB plugin ${kind} is not allowed: ${url.origin}`);
+	return url;
 }
 
 function parseManifest(value: unknown): PluginManifest {

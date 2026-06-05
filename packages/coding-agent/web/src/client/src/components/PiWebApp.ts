@@ -246,6 +246,7 @@ export class PiWebApp extends LitElement {
 		this.git.dispose();
 		this.piWebStatus.dispose();
 		this.workspaceDeletion.dispose();
+		this.terminalCommandRuns.dispose();
 		super.disconnectedCallback();
 	}
 
@@ -407,50 +408,70 @@ export class PiWebApp extends LitElement {
 
 	private renderNavigationPanelEdgeControl() {
 		return html`
-      <app-panel-edge-control
-        side="navigation"
-        controls="navigation-panel"
-        expandLabel="Expand navigation panel"
-        collapseLabel="Collapse navigation panel"
-        .collapsed=${this.panelCollapse.navigationPanelCollapsed}
-        .onToggle=${() => {
+			<app-panel-edge-control
+				side="navigation"
+				controls="navigation-panel"
+				expandLabel="Expand navigation panel"
+				collapseLabel="Collapse navigation panel"
+				resizeLabel="Resize navigation panel"
+				.collapsed=${this.panelCollapse.navigationPanelCollapsed}
+				.resizeValue=${this.panelCollapse.panelWidth("navigation")}
+				.resizeMin=${this.panelCollapse.panelMinWidth("navigation")}
+				.resizeMax=${this.panelCollapse.panelMaxWidth("navigation")}
+				.onToggle=${() => {
 				this.panelCollapse.toggleNavigationPanel();
 			}}
-        .onResizeStart=${(clientX: number) => {
+				.onResizeStart=${(clientX: number) => {
 				this.panelCollapse.startResize("navigation", clientX);
 			}}
-        .onResizeMove=${(clientX: number) => {
+				.onResizeMove=${(clientX: number) => {
 				this.panelCollapse.resize(clientX);
 			}}
         .onResizeEnd=${() => {
 				this.panelCollapse.endResize();
 			}}
-      ></app-panel-edge-control>
-    `;
+				.onResizeBy=${(deltaX: number) => {
+				this.panelCollapse.resizeBy("navigation", deltaX);
+			}}
+        .onResizeTo=${(width: number) => {
+				this.panelCollapse.resizeTo("navigation", width);
+			}}
+			></app-panel-edge-control>
+		`;
 	}
 
 	private renderWorkspacePanelEdgeControl() {
 		return html`
-      <app-panel-edge-control
-        side="workspace"
-        controls="workspace-panel"
-        expandLabel="Expand workspace panel"
-        collapseLabel="Collapse workspace panel"
-        .collapsed=${this.panelCollapse.workspacePanelCollapsed}
-        .onToggle=${() => {
+			<app-panel-edge-control
+				side="workspace"
+				controls="workspace-panel"
+				expandLabel="Expand workspace panel"
+				collapseLabel="Collapse workspace panel"
+				resizeLabel="Resize workspace panel"
+				.collapsed=${this.panelCollapse.workspacePanelCollapsed}
+				.resizeValue=${this.panelCollapse.panelWidth("workspace")}
+				.resizeMin=${this.panelCollapse.panelMinWidth("workspace")}
+				.resizeMax=${this.panelCollapse.panelMaxWidth("workspace")}
+				.onToggle=${() => {
 				this.panelCollapse.toggleWorkspacePanel();
 			}}
-        .onResizeStart=${(clientX: number) => {
+				.onResizeStart=${(clientX: number) => {
 				this.panelCollapse.startResize("workspace", clientX);
 			}}
-        .onResizeMove=${(clientX: number) => {
+				.onResizeMove=${(clientX: number) => {
 				this.panelCollapse.resize(clientX);
 			}}
         .onResizeEnd=${() => {
 				this.panelCollapse.endResize();
 			}}
-      ></app-panel-edge-control>
-    `;
+				.onResizeBy=${(deltaX: number) => {
+				this.panelCollapse.resizeBy("workspace", deltaX);
+			}}
+        .onResizeTo=${(width: number) => {
+				this.panelCollapse.resizeTo("workspace", width);
+			}}
+			></app-panel-edge-control>
+		`;
 	}
 
 	private renderNavigationPanel(autoSwitchToChat: boolean) {

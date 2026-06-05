@@ -85,4 +85,30 @@ describe("terminal runtime", () => {
 		await expect(handle.completed).resolves.toEqual(succeededRun);
 		expect(api.getCommandRun).toHaveBeenCalledWith("run1");
 	});
+
+	it("cancels pending polling on dispose", async () => {
+		vi.useFakeTimers();
+		const clearTimeout = vi.fn((id: ReturnType<typeof globalThis.setTimeout>) => {
+			globalThis.clearTimeout(id);
+		});
+		const api = {
+			runTerminalCommand: vi.fn(() => Promise.resolve(runningRun)),
+			listCommandRuns: vi.fn(),
+			getCommandRun: vi.fn(() => Promise.resolve(undefined)),
+		};
+		const runtime = createTerminalCommandRunsRuntime("core", {
+			api,
+			openTerminal: vi.fn(),
+			pollIntervalMs: 25,
+			setTimeout: (handler, timeout) => globalThis.setTimeout(handler, timeout),
+			clearTimeout,
+		});
+
+		await runtime.runCommand({ workspace, title: "Build", command: "npm run build" });
+		runtime.dispose();
+		await vi.advanceTimersByTimeAsync(50);
+
+		expect(clearTimeout).toHaveBeenCalled();
+		expect(api.getCommandRun).not.toHaveBeenCalled();
+	});
 });

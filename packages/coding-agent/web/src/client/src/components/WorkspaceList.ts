@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Workspace, WorkspaceActivity } from "../api";
 import type { WorkspaceLabelItem } from "../plugins/types";
 import { workspaceActivityFor, workspaceActivityIndicator } from "../workspaceActivity";
-import { actionMenuPanelStyle } from "./actionMenu";
+import { actionMenuId, actionMenuPanelStyle, focusActionMenuToggle, focusFirstActionMenuItem } from "./actionMenu";
 import { renderActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
@@ -131,11 +131,12 @@ export class WorkspaceList extends LitElement {
 		return html`
       <div class="action-menu">
         <button
-          class="action-menu-toggle"
-          title="Workspace actions and details"
-          aria-label=${`Actions and details for ${label}`}
-          aria-expanded=${String(open)}
-          aria-controls=${menuId}
+			class="action-menu-toggle"
+			title="Workspace actions and details"
+			aria-label=${`Actions and details for ${label}`}
+			aria-haspopup="dialog"
+			aria-expanded=${String(open)}
+			aria-controls=${menuId}
           @click=${(event: MouseEvent) => {
 					event.stopPropagation();
 					this.toggleMenu(workspace.id, event.currentTarget);
@@ -144,10 +145,12 @@ export class WorkspaceList extends LitElement {
         ${
 				open
 					? html`
-          <div class="action-menu-panel workspace-menu-panel" id=${menuId} style=${this.menuStyle} @click=${(
+			<div class="action-menu-panel workspace-menu-panel" id=${menuId} role="dialog" aria-label=${`Workspace details for ${label}`} tabindex="-1" style=${this.menuStyle} @click=${(
 					event: MouseEvent,
 				) => {
 					event.stopPropagation();
+				}} @keydown=${(event: KeyboardEvent) => {
+					this.handleMenuKeydown(event, workspace.id);
 				}}>
             ${this.renderWorkspaceActions(workspace)}
             ${this.renderWorkspaceDetails(label, items, workspace)}
@@ -164,7 +167,7 @@ export class WorkspaceList extends LitElement {
 		const deleting = this.isDeleting(workspace);
 		return html`
       <div class="workspace-menu-actions">
-        <button class="danger" title=${deleting ? "Workspace deletion in progress" : "Delete workspace"} ?disabled=${deleting} @click=${() => {
+		<button class="danger" title=${deleting ? "Workspace deletion in progress" : "Delete workspace"} ?disabled=${deleting} @click=${() => {
 				this.delete(workspace);
 			}}>${deleting ? "Deleting…" : "Delete workspace"}</button>
       </div>
@@ -213,6 +216,22 @@ export class WorkspaceList extends LitElement {
 		}
 		this.menuStyle = actionMenuPanelStyle(target);
 		this.openMenuWorkspaceId = workspaceId;
+		void this.focusOpenMenu(workspaceMenuId(workspaceId));
+	}
+
+	private async focusOpenMenu(menuId: string): Promise<void> {
+		await this.updateComplete;
+		focusFirstActionMenuItem(this.renderRoot, menuId);
+	}
+
+	private handleMenuKeydown(event: KeyboardEvent, workspaceId: string): void {
+		if (event.key !== "Escape") return;
+		event.preventDefault();
+		event.stopPropagation();
+		this.openMenuWorkspaceId = undefined;
+		void this.updateComplete.then(() => {
+			focusActionMenuToggle(this.renderRoot, workspaceMenuId(workspaceId));
+		});
 	}
 
 	private handleWorkspaceKeydown(event: KeyboardEvent, workspace: Workspace): void {
@@ -241,5 +260,5 @@ function canDeleteWorkspace(workspace: Workspace): boolean {
 }
 
 function workspaceMenuId(workspaceId: string): string {
-	return `workspace-menu-${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+	return actionMenuId("workspace-menu", workspaceId);
 }

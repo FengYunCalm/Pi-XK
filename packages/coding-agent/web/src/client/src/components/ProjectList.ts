@@ -2,7 +2,7 @@ import { html, LitElement, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Project, Workspace, WorkspaceActivity } from "../api";
 import { projectActivityIndicator } from "../workspaceActivity";
-import { actionMenuPanelStyle } from "./actionMenu";
+import { actionMenuId, actionMenuPanelStyle, focusActionMenuToggle, focusFirstActionMenuItem } from "./actionMenu";
 import { renderActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
@@ -71,7 +71,9 @@ export class ProjectList extends LitElement {
                   <span class="action-name">${project.name}</span><small>${this.renderActivity(project)}${project.path}</small>
                 </div>
                 <div class="action-menu">
-                  <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(
+                  <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} aria-haspopup="menu" aria-expanded=${String(
+									this.openMenuProjectId === project.id,
+								)} aria-controls=${projectMenuId(project.id)} @click=${(
 							event: MouseEvent,
 						) => {
 							event.stopPropagation();
@@ -80,8 +82,12 @@ export class ProjectList extends LitElement {
                   ${
 							this.openMenuProjectId === project.id
 								? html`
-                    <div class="action-menu-panel" style=${this.menuStyle}>
-                      <button title="Close project" @click=${() => {
+					<div class="action-menu-panel" id=${projectMenuId(project.id)} role="menu" tabindex="-1" style=${this.menuStyle} @click=${(event: MouseEvent) => {
+									event.stopPropagation();
+								}} @keydown=${(event: KeyboardEvent) => {
+									this.handleMenuKeydown(event, project.id);
+								}}>
+                      <button role="menuitem" title="Close project" @click=${() => {
 									this.close(project);
 								}}>Close</button>
                     </div>
@@ -120,6 +126,22 @@ export class ProjectList extends LitElement {
 		}
 		this.menuStyle = actionMenuPanelStyle(target);
 		this.openMenuProjectId = projectId;
+		void this.focusOpenMenu(projectMenuId(projectId));
+	}
+
+	private async focusOpenMenu(menuId: string): Promise<void> {
+		await this.updateComplete;
+		focusFirstActionMenuItem(this.renderRoot, menuId);
+	}
+
+	private handleMenuKeydown(event: KeyboardEvent, projectId: string): void {
+		if (event.key !== "Escape") return;
+		event.preventDefault();
+		event.stopPropagation();
+		this.openMenuProjectId = undefined;
+		void this.updateComplete.then(() => {
+			focusActionMenuToggle(this.renderRoot, projectMenuId(projectId));
+		});
 	}
 
 	private close(project: Project) {
@@ -129,4 +151,8 @@ export class ProjectList extends LitElement {
 	}
 
 	static override styles = listStyles;
+}
+
+function projectMenuId(projectId: string): string {
+	return actionMenuId("project-menu", projectId);
 }

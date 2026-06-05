@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,6 +106,7 @@ async function writeInitialConfig(options: ForegroundOptions): Promise<string> {
 
 async function runForeground(args: string[]): Promise<void> {
 	const options = parseForegroundOptions(args);
+	await assertPortAvailable(options.host, options.port);
 	const configPath = await writeInitialConfig(options);
 	const token = process.env["PI_WEB_TOKEN"] ?? (isLocalHost(options.host) ? undefined : generateAccessToken());
 	const url = webInterfaceUrlWithToken(options, token);
@@ -134,6 +136,27 @@ async function runForeground(args: string[]): Promise<void> {
 	} finally {
 		await rm(sessiondRuntimeDir, { recursive: true, force: true });
 	}
+}
+
+export async function assertPortAvailable(host: string, port: string): Promise<void> {
+	const parsedPort = Number.parseInt(port, 10);
+	if (!Number.isFinite(parsedPort)) throw new Error(`Invalid web port: ${port}`);
+	await new Promise<void>((resolvePromise, reject) => {
+		const server = createServer();
+		server.once("error", (error: NodeJS.ErrnoException) => {
+			if (error.code === "EADDRINUSE") {
+				reject(new Error(`Port ${port} is already in use on ${host}. Choose another port with \`pi web --port <port>\`.`));
+				return;
+			}
+			reject(error);
+		});
+		server.listen({ host, port: parsedPort }, () => {
+			server.close((error) => {
+				if (error !== undefined) reject(error);
+				else resolvePromise();
+			});
+		});
+	});
 }
 
 function generateAccessToken(): string {

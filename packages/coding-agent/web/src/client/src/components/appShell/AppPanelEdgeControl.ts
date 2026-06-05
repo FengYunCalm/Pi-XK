@@ -10,10 +10,16 @@ export class AppPanelEdgeControl extends LitElement {
 	@property() controls = "";
 	@property() expandLabel = "Expand panel";
 	@property() collapseLabel = "Collapse panel";
+	@property() resizeLabel = "Resize panel";
+	@property({ type: Number }) resizeValue = 0;
+	@property({ type: Number }) resizeMin = 0;
+	@property({ type: Number }) resizeMax = 0;
 	@property({ attribute: false }) onToggle?: () => void;
 	@property({ attribute: false }) onResizeStart?: (clientX: number) => void;
 	@property({ attribute: false }) onResizeMove?: (clientX: number) => void;
 	@property({ attribute: false }) onResizeEnd?: () => void;
+	@property({ attribute: false }) onResizeBy?: (deltaX: number) => void;
+	@property({ attribute: false }) onResizeTo?: (width: number) => void;
 	private dragging = false;
 	private readonly onWindowPointerMove = (event: PointerEvent) => {
 		if (!this.dragging) return;
@@ -27,7 +33,18 @@ export class AppPanelEdgeControl extends LitElement {
 	override render() {
 		const label = this.collapsed ? this.expandLabel : this.collapseLabel;
 		return html`
-      <div class="resize-handle" aria-hidden="true" @pointerdown=${this.startDrag}></div>
+      <div
+        class="resize-handle"
+        role="separator"
+        tabindex=${this.collapsed ? "-1" : "0"}
+        aria-label=${this.resizeLabel}
+        aria-orientation="vertical"
+        aria-valuemin=${String(this.resizeMin)}
+        aria-valuemax=${String(this.resizeMax)}
+        aria-valuenow=${String(this.resizeValue)}
+        @keydown=${this.handleResizeKeyDown}
+        @pointerdown=${this.startDrag}
+      ></div>
       <button
         type="button"
         class="edge-button"
@@ -57,6 +74,24 @@ export class AppPanelEdgeControl extends LitElement {
 		window.addEventListener("pointerup", this.onWindowPointerUp, { once: true });
 	};
 
+	private readonly handleResizeKeyDown = (event: KeyboardEvent) => {
+		if (this.collapsed) return;
+		const step = event.shiftKey ? 80 : 24;
+		if (event.key === "ArrowLeft") {
+			event.preventDefault();
+			this.onResizeBy?.(-step);
+		} else if (event.key === "ArrowRight") {
+			event.preventDefault();
+			this.onResizeBy?.(step);
+		} else if (event.key === "Home") {
+			event.preventDefault();
+			this.onResizeTo?.(this.resizeMin);
+		} else if (event.key === "End") {
+			event.preventDefault();
+			this.onResizeTo?.(this.resizeMax);
+		}
+	};
+
 	private stopDrag(): void {
 		if (!this.dragging) return;
 		this.dragging = false;
@@ -81,10 +116,12 @@ export class AppPanelEdgeControl extends LitElement {
 	    :host { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: transparent; z-index: 2; }
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
-	    .resize-handle { position: absolute; inset: 0; cursor: col-resize; touch-action: none; }
+	    .resize-handle { position: absolute; inset: 0; cursor: col-resize; touch-action: none; outline: none; }
+	    .resize-handle:focus-visible { box-shadow: 0 0 0 2px var(--pi-accent); }
 	    :host([collapsed]) .resize-handle { display: none; }
 	    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; transition: transform .16s ease, background .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease; }
 	    .edge-button:hover, .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
+	    .resize-handle:focus-visible + .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; outline: 2px solid var(--pi-accent); outline-offset: 2px; }
 	    :host([dragging]) .edge-button { border-color: var(--pi-accent-border); color: var(--pi-text-bright); background: var(--pi-selection-bg); opacity: 1; }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
     :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }

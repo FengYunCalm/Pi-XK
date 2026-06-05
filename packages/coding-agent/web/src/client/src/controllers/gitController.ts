@@ -24,6 +24,7 @@ export class GitController {
 		if (project === undefined || workspace === undefined) return;
 		try {
 			const status = await api.gitStatus(project.id, workspace.id);
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ gitStatus: status, gitStale: false, error: "" });
 			const selectedDiffPath = this.getState().selectedDiffPath;
 			if (selectedDiffPath !== undefined) {
@@ -34,6 +35,7 @@ export class GitController {
 				}
 			}
 		} catch (error) {
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ error: String(error) });
 		}
 	}
@@ -65,8 +67,10 @@ export class GitController {
 				api.gitDiff(project.id, workspace.id, { path }),
 				api.gitDiff(project.id, workspace.id, { path, staged: true }),
 			]);
+			if (!this.isCurrentWorkspace(project.id, workspace.id) || this.getState().selectedDiffPath !== path) return;
 			this.setState({ selectedDiff, selectedStagedDiff, error: "" });
 		} catch (error) {
+			if (!this.isCurrentWorkspace(project.id, workspace.id) || this.getState().selectedDiffPath !== path) return;
 			this.setState({ error: String(error) });
 		}
 	}
@@ -79,5 +83,10 @@ export class GitController {
 				void this.refreshGit();
 			}, 8000);
 		}
+	}
+
+	private isCurrentWorkspace(projectId: string, workspaceId: string): boolean {
+		const state = this.getState();
+		return state.selectedProject?.id === projectId && state.selectedWorkspace?.id === workspaceId;
 	}
 }

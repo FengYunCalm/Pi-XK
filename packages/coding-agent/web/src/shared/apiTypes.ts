@@ -246,6 +246,7 @@ export interface RunTerminalCommandInput {
 export interface TerminalCommandRunHandle {
 	run: TerminalCommandRun;
 	completed: Promise<TerminalCommandRun>;
+	cancel?: () => void;
 }
 
 export interface TerminalCommandRunFilter {

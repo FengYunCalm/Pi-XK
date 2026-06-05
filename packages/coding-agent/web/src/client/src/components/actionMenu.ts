@@ -41,6 +41,31 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
 	].join(" ");
 }
 
+export function actionMenuId(prefix: string, id: string): string {
+	return `${prefix}-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+export function focusFirstActionMenuItem(root: ParentNode, menuId: string): void {
+	const panel = actionMenuPanel(root, menuId);
+	(panel?.querySelector<HTMLElement>("button") ?? panel)?.focus();
+}
+
+export function focusActionMenuToggle(root: ParentNode, menuId: string): void {
+	for (const button of root.querySelectorAll<HTMLElement>(".action-menu-toggle")) {
+		if (button.getAttribute("aria-controls") === menuId) {
+			button.focus();
+			return;
+		}
+	}
+}
+
+function actionMenuPanel(root: ParentNode, menuId: string): HTMLElement | undefined {
+	for (const panel of root.querySelectorAll<HTMLElement>(".action-menu-panel")) {
+		if (panel.id === menuId) return panel;
+	}
+	return undefined;
+}
+
 function actionMenuBounds(target: HTMLElement): ActionMenuRect {
 	const root = target.getRootNode();
 	if (typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot && root.host instanceof HTMLElement)

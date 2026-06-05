@@ -55,6 +55,7 @@ export interface TerminalCommandRunsInternalRuntime {
 	listCommandRuns(filter?: TerminalCommandRunFilter): Promise<TerminalCommandRun[]>;
 	getCommandRun(runId: string): Promise<TerminalCommandRun | undefined>;
 	open(options?: { terminalId?: string | undefined }): void;
+	dispose(): void;
 }
 
 export interface PluginRuntimeContext {

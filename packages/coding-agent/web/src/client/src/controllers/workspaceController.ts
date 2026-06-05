@@ -15,6 +15,8 @@ export interface WorkspaceControllerDependencies {
 
 export class WorkspaceController {
 	private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces">;
+	private projectSelectionSeq = 0;
+	private workspaceSelectionSeq = 0;
 
 	constructor(
 		private readonly getState: GetState,
@@ -28,6 +30,8 @@ export class WorkspaceController {
 	}
 
 	clearSelection(options?: { updateUrl?: boolean | undefined }) {
+		this.projectSelectionSeq += 1;
+		this.workspaceSelectionSeq += 1;
 		this.sessions.clearActiveSession();
 		this.setState({
 			selectedProject: undefined,
@@ -48,6 +52,8 @@ export class WorkspaceController {
 	}
 
 	async selectProject(project: Project, target?: RouteTarget) {
+		const projectSeq = (this.projectSelectionSeq += 1);
+		this.workspaceSelectionSeq += 1;
 		this.sessions.clearActiveSession();
 		this.setState({
 			selectedProject: project,
@@ -58,6 +64,7 @@ export class WorkspaceController {
 		});
 		try {
 			const workspaces = await this.api.workspaces(project.id);
+			if (projectSeq !== this.projectSelectionSeq || this.getState().selectedProject?.id !== project.id) return;
 			this.setState({
 				workspaces,
 				workspacesByProjectId: { ...this.getState().workspacesByProjectId, [project.id]: workspaces },
@@ -71,6 +78,7 @@ export class WorkspaceController {
 				await this.selectWorkspace(workspace, { sessionId: target?.sessionId, updateUrl: target?.updateUrl });
 			else if (target?.updateUrl !== false) this.updateUrl();
 		} catch (error) {
+			if (projectSeq !== this.projectSelectionSeq || this.getState().selectedProject?.id !== project.id) return;
 			this.setState({ error: String(error), isLoadingWorkspaces: false });
 		}
 	}
@@ -79,16 +87,19 @@ export class WorkspaceController {
 		workspace: Workspace,
 		target?: { sessionId?: string | undefined; updateUrl?: boolean | undefined },
 	) {
+		const workspaceSeq = (this.workspaceSelectionSeq += 1);
 		this.workspaceSelection.rememberWorkspace(workspace);
 		this.sessions.clearActiveSession();
 		this.setState({ selectedWorkspace: workspace, isLoadingWorkspaces: false, ...resetWorkspaceScopedState() });
 		try {
 			const sessions = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path));
+			if (workspaceSeq !== this.workspaceSelectionSeq || this.getState().selectedWorkspace?.id !== workspace.id) return;
 			this.setState({ sessions });
 			const session = this.sessions.preferredSession(workspace.path, sessions, target?.sessionId);
 			if (session) await this.sessions.selectSession(session, { updateUrl: target?.updateUrl });
 			else if (target?.updateUrl !== false) this.updateUrl();
 		} catch (error) {
+			if (workspaceSeq !== this.workspaceSelectionSeq || this.getState().selectedWorkspace?.id !== workspace.id) return;
 			this.setState({ error: String(error) });
 		}
 	}

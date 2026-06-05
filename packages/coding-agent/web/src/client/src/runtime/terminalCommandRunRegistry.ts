@@ -29,4 +29,9 @@ export class TerminalCommandRunRegistry {
 		this.runtimes.set(origin, runtime);
 		return runtime;
 	}
+
+	dispose(): void {
+		for (const runtime of this.runtimes.values()) runtime.dispose();
+		this.runtimes.clear();
+	}
 }

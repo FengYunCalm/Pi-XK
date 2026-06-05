@@ -23,8 +23,10 @@ export class FileExplorerController {
 					expanded[path] = (await api.workspaceTree(project.id, workspace.id, path)).entries;
 				}),
 			);
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ fileTree: root.entries, expandedDirs: expanded, fileTreeStale: false, error: "" });
 		} catch (error) {
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ error: String(error) });
 		}
 	}
@@ -39,8 +41,10 @@ export class FileExplorerController {
 		}
 		try {
 			const response = await api.workspaceTree(project.id, workspace.id, path);
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ expandedDirs: { ...this.getState().expandedDirs, [path]: response.entries }, error: "" });
 		} catch (error) {
+			if (!this.isCurrentWorkspace(project.id, workspace.id)) return;
 			this.setState({ error: String(error) });
 		}
 	}
@@ -64,9 +68,10 @@ export class FileExplorerController {
 		this.setState({ selectedFilePath: path, selectedFileContent: undefined });
 		try {
 			const content = await api.workspaceFile(project.id, workspace.id, path);
-			if (this.getState().selectedFilePath === path) this.setState({ selectedFileContent: content, error: "" });
+			if (this.isCurrentWorkspace(project.id, workspace.id) && this.getState().selectedFilePath === path)
+				this.setState({ selectedFileContent: content, error: "" });
 		} catch (error) {
-			if (this.getState().selectedFilePath !== path) return;
+			if (!this.isCurrentWorkspace(project.id, workspace.id) || this.getState().selectedFilePath !== path) return;
 			if (isUnavailableFileError(error)) {
 				this.setState({ selectedFilePath: undefined, selectedFileContent: undefined, error: "" });
 				setNamespacedQueryKey(FILES_ROUTE_NAMESPACE, "file", undefined, { replace: true });
@@ -75,6 +80,11 @@ export class FileExplorerController {
 			}
 			this.setState({ error: String(error) });
 		}
+	}
+
+	private isCurrentWorkspace(projectId: string, workspaceId: string): boolean {
+		const state = this.getState();
+		return state.selectedProject?.id === projectId && state.selectedWorkspace?.id === workspaceId;
 	}
 }
 

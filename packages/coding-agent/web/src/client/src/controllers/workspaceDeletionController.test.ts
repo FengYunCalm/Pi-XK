@@ -36,6 +36,26 @@ describe("WorkspaceDeletionController", () => {
 		expect(refreshAfterWorkspaceDeleted).toHaveBeenCalledWith("p1", "wt1");
 		expect(state.current.workspaceDeletionRuns).toEqual({});
 	});
+
+	it("retries successful runs when workspace refresh fails", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const refreshAfterWorkspaceDeleted = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("refresh failed"))
+			.mockResolvedValueOnce(undefined);
+		const run = commandRun({ id: "run3", status: "succeeded" });
+		const { controller, state } = createController({ listCommandRuns: () => Promise.resolve([run]), refreshAfterWorkspaceDeleted });
+
+		try {
+			await controller.refreshRuns();
+			await controller.refreshRuns();
+		} finally {
+			warn.mockRestore();
+		}
+
+		expect(refreshAfterWorkspaceDeleted).toHaveBeenCalledTimes(2);
+		expect(state.current.workspaceDeletionRuns).toEqual({});
+	});
 });
 
 function createController(options: {
@@ -49,6 +69,7 @@ function createController(options: {
 		listCommandRuns: options.listCommandRuns ?? (() => Promise.resolve([])),
 		getCommandRun: () => Promise.resolve(undefined),
 		open: () => undefined,
+		dispose: () => undefined,
 	};
 	const controller = new WorkspaceDeletionController(
 		() => state.current,

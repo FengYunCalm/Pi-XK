@@ -588,14 +588,16 @@ export class TerminalPanel extends LitElement {
           ${this.renderSoftKeysToggle()}
           ${this.terminals.map(
 					(terminal) => html`
-            <button class=${this.selectedId === terminal.id ? "selected" : ""} @click=${() => {
+						<div class=${`terminal-tab ${this.selectedId === terminal.id ? "selected" : ""}`}>
+							<button class="terminal-select" @click=${() => {
 					this.selectTerminal(terminal.id);
 				}}>
-              <span>${terminal.name}${terminal.exited ? " · exited" : ""}</span>
-              <small @click=${(event: Event) => {
+								<span>${terminal.name}${terminal.exited ? " · exited" : ""}</span>
+							</button>
+							<button class="terminal-close" aria-label=${`Close terminal ${terminal.name}`} @click=${(event: Event) => {
 						void this.closeTerminal(terminal.id, event);
-					}}>×</small>
-            </button>
+					}}>×</button>
+						</div>
           `,
 				)}
           <button class="new" ?disabled=${this.workspace === undefined} @click=${() => {
@@ -616,7 +618,12 @@ export class TerminalPanel extends LitElement {
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
     button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
-    button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .terminal-tab { flex: 0 0 auto; display: inline-flex; align-items: stretch; min-width: 0; max-width: 200px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); overflow: hidden; }
+    .terminal-tab.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .terminal-select, .terminal-close { border: 0; border-radius: 0; background: transparent; }
+    .terminal-select { flex: 1 1 auto; max-width: none; padding: 5px 4px 5px 7px; }
+    .terminal-close { flex: 0 0 auto; width: 24px; max-width: none; justify-content: center; padding: 0; color: var(--pi-muted); }
+    .terminal-close:hover, .terminal-close:focus-visible { color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); }
     button.new { flex: 0 0 auto; color: var(--pi-muted); }
     .soft-keys-toggle { flex: 0 0 auto; }
     .soft-keys-toggle .keyboard-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }

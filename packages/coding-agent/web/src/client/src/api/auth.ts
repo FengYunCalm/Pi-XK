@@ -19,8 +19,9 @@ export function withPiWebTokenQuery(url: string): string {
 	const token = piWebAccessToken();
 	if (token === undefined) return url;
 	const parsed = new URL(url, window.location.href);
+	if (parsed.origin !== window.location.origin) return parsed.toString();
 	parsed.searchParams.set("token", token);
-	return parsed.origin === window.location.origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
+	return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 function tokenFromUrl(): string | undefined {

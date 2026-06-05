@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
-import { actionMenuPanelStyle } from "./actionMenu";
+import { actionMenuId, actionMenuPanelStyle, focusActionMenuToggle, focusFirstActionMenuItem } from "./actionMenu";
 import { renderActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
@@ -102,6 +102,8 @@ export class SessionList extends LitElement {
 	private renderSession(row: SessionRow, descendantCount: number) {
 		const { session } = row;
 		const cappedDepth = Math.min(row.depth, 2);
+		const open = this.openMenuSessionId === session.id;
+		const menuId = sessionMenuId(session.id);
 		return html`
       <div
         class="action-row ${this.selected?.id === session.id ? "selected" : ""}"
@@ -119,17 +121,23 @@ export class SessionList extends LitElement {
           <span class="action-name">${row.depth > 0 ? html`<span class="tree-marker">↳</span>` : null}${sessionLabel(session)}${row.depth > 2 ? html` <span class="badge">depth ${row.depth}</span>` : null}${row.hasMissingParent ? html` <span class="badge">parent unavailable</span>` : null}</span><small>${this.renderStatus(session)}${String(session.messageCount)} messages</small>
         </div>
         <div class="action-menu">
-          <button class="action-menu-toggle" title="Session actions" @click=${(event: MouseEvent) => {
+					<button class="action-menu-toggle" title="Session actions" aria-label=${`Actions for ${sessionLabel(session)}`} aria-haspopup="menu" aria-expanded=${String(
+						open,
+					)} aria-controls=${menuId} @click=${(event: MouseEvent) => {
 					event.stopPropagation();
 					this.toggleMenu(session.id, event.currentTarget);
 				}}>⋯</button>
           ${
-					this.openMenuSessionId === session.id
+					open
 						? html`
-            <div class="action-menu-panel" style=${this.menuStyle}>
+			<div class="action-menu-panel" id=${menuId} role="menu" tabindex="-1" style=${this.menuStyle} @click=${(event: MouseEvent) => {
+							event.stopPropagation();
+						}} @keydown=${(event: KeyboardEvent) => {
+							this.handleMenuKeydown(event, session.id);
+						}}>
               ${
 						session.parentSessionPath !== undefined
-							? html`<button title="Detach from parent" @click=${() => {
+							? html`<button role="menuitem" title="Detach from parent" @click=${() => {
 									this.openMenuSessionId = undefined;
 									this.onDetachParent?.(session);
 								}}>Detach from parent</button>`
@@ -137,7 +145,7 @@ export class SessionList extends LitElement {
 					}
               ${
 						isCachedNewSessionInfo(session)
-							? html`<button title="Delete browser-cached new session" @click=${() => {
+							? html`<button role="menuitem" title="Delete browser-cached new session" @click=${() => {
 									this.openMenuSessionId = undefined;
 									this.onDelete?.(session);
 								}}>Delete</button>`
@@ -159,6 +167,22 @@ export class SessionList extends LitElement {
 		}
 		this.menuStyle = actionMenuPanelStyle(target);
 		this.openMenuSessionId = sessionId;
+		void this.focusOpenMenu(sessionMenuId(sessionId));
+	}
+
+	private async focusOpenMenu(menuId: string): Promise<void> {
+		await this.updateComplete;
+		focusFirstActionMenuItem(this.renderRoot, menuId);
+	}
+
+	private handleMenuKeydown(event: KeyboardEvent, sessionId: string): void {
+		if (event.key !== "Escape") return;
+		event.preventDefault();
+		event.stopPropagation();
+		this.openMenuSessionId = undefined;
+		void this.updateComplete.then(() => {
+			focusActionMenuToggle(this.renderRoot, sessionMenuId(sessionId));
+		});
 	}
 
 	private scrollSelectedIntoView(): void {
@@ -230,4 +254,8 @@ function sessionRows(sessions: SessionInfo[]): SessionRow[] {
 	};
 	for (const root of roots) visit(root, 0, new Set());
 	return rows;
+}
+
+function sessionMenuId(sessionId: string): string {
+	return actionMenuId("session-menu", sessionId);
 }

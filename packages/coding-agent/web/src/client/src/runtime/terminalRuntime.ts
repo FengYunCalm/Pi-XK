@@ -30,33 +30,50 @@ export function createTerminalCommandRunsRuntime(
 	const pollIntervalMs = deps.pollIntervalMs ?? 1000;
 	const setTimer = deps.setTimeout ?? defaultSetTimeout();
 	const clearTimer = deps.clearTimeout ?? defaultClearTimeout();
+	const activeCancellations = new Set<() => void>();
 
 	return {
 		async runCommand(input: RunTerminalCommandInput) {
 			const run = await api.runTerminalCommand(origin, input);
 			if (input.open === true) void deps.openTerminal(input.workspace, { terminalId: run.terminalId });
-			return { run, completed: waitForCommandRunCompletion(run, api, pollIntervalMs, setTimer, clearTimer) };
+			const watcher = watchCommandRunCompletion(run, api, pollIntervalMs, setTimer, clearTimer);
+			const cancel = () => {
+				watcher.cancel();
+				activeCancellations.delete(cancel);
+			};
+			activeCancellations.add(cancel);
+			return {
+				run,
+				completed: watcher.completed.finally(() => {
+					activeCancellations.delete(cancel);
+				}),
+				cancel,
+			};
 		},
 		listCommandRuns: (filter?: TerminalCommandRunFilter) => api.listCommandRuns(filter),
 		getCommandRun: (runId: string) => api.getCommandRun(runId),
 		open: (options?: { terminalId?: string | undefined }) => {
 			void deps.openTerminal(undefined, options);
 		},
+		dispose: () => {
+			for (const cancel of activeCancellations) cancel();
+			activeCancellations.clear();
+		},
 	};
 }
 
-function waitForCommandRunCompletion(
+function watchCommandRunCompletion(
 	initialRun: TerminalCommandRun,
 	api: Pick<typeof defaultApi, "getCommandRun">,
 	pollIntervalMs: number,
 	setTimer: SetTimer,
 	clearTimer: ClearTimer,
-): Promise<TerminalCommandRun> {
-	if (isTerminalCommandRunFinal(initialRun)) return Promise.resolve(initialRun);
-	return new Promise((resolve, reject) => {
-		let timer: TimerId | undefined;
-		let settled = false;
+): { completed: Promise<TerminalCommandRun>; cancel: () => void } {
+	if (isTerminalCommandRunFinal(initialRun)) return { completed: Promise.resolve(initialRun), cancel: () => undefined };
+	let timer: TimerId | undefined;
+	let settled = false;
 
+	const completed = new Promise<TerminalCommandRun>((resolve, reject) => {
 		const finish = (result: TerminalCommandRun) => {
 			if (settled) return;
 			settled = true;
@@ -75,6 +92,7 @@ function waitForCommandRunCompletion(
 			void api
 				.getCommandRun(initialRun.id)
 				.then((run) => {
+					if (settled) return;
 					if (run !== undefined && isTerminalCommandRunFinal(run)) {
 						finish(run);
 						return;
@@ -86,6 +104,15 @@ function waitForCommandRunCompletion(
 
 		timer = setTimer(poll, pollIntervalMs);
 	});
+
+	return {
+		completed,
+		cancel: () => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimer(timer);
+		},
+	};
 }
 
 function isTerminalCommandRunFinal(run: TerminalCommandRun): boolean {

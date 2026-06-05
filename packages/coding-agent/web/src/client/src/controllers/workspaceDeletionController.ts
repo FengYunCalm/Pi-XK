@@ -137,17 +137,18 @@ export class WorkspaceDeletionController {
 		if (this.handledRunIds.has(run.id)) return;
 		const workspaceId = targetWorkspaceIdForRun(run);
 		if (workspaceId === undefined) return;
-		this.handledRunIds.add(run.id);
 
 		if (run.status === "succeeded") {
 			await this.refreshAfterWorkspaceDeleted(run.projectId, workspaceId);
 			this.setState({ workspaceDeletionRuns: omitWorkspaceDeletionRun(this.getState().workspaceDeletionRuns, workspaceId) });
+			this.handledRunIds.add(run.id);
 			this.updatePolling();
 			return;
 		}
 
 		if (run.status === "failed") {
 			this.setState({ error: "Workspace deletion failed. See terminal output." });
+			this.handledRunIds.add(run.id);
 			this.updatePolling();
 		}
 	}

@@ -12,6 +12,7 @@ export class SessionSocket {
 	private shouldReconnect = false;
 	private hasOpened = false;
 	private onReconnect: (() => void) | undefined;
+	private connectionId = 0;
 
 	connect(sessionId: string, onEvent: (event: SessionUiEvent) => void, onReconnect?: () => void): void {
 		this.close();
@@ -28,6 +29,7 @@ export class SessionSocket {
 
 	close(): void {
 		this.shouldReconnect = false;
+		this.connectionId += 1;
 		window.clearTimeout(this.reconnectTimer);
 		closeSocketQuietly(this.socket);
 		this.socket = undefined;
@@ -39,6 +41,7 @@ export class SessionSocket {
 
 	private open(): void {
 		if (this.sessionId === undefined || this.sessionId === "" || !this.shouldReconnect) return;
+		const connectionId = (this.connectionId += 1);
 		const socket = sessionEvents(this.sessionId);
 		this.socket = socket;
 		socket.onopen = () => {
@@ -46,7 +49,7 @@ export class SessionSocket {
 			if (this.hasOpened) this.onReconnect?.();
 			this.hasOpened = true;
 		};
-		socket.onmessage = (message) => void this.handleMessage(message.data);
+		socket.onmessage = (message) => void this.handleMessage(message.data, connectionId);
 		socket.onerror = () => {
 			socket.close();
 		};
@@ -66,8 +69,9 @@ export class SessionSocket {
 		}, delay);
 	}
 
-	private async handleMessage(data: MessageEvent["data"]): Promise<void> {
+	private async handleMessage(data: MessageEvent["data"], connectionId: number): Promise<void> {
 		const event = await parseSocketEvent(data);
+		if (connectionId !== this.connectionId) return;
 		if (isSessionUiEvent(event)) this.onEvent?.(event);
 	}
 }
@@ -79,6 +83,7 @@ export class RealtimeSocket {
 	private reconnectTimer?: number;
 	private reconnectDelay = 500;
 	private shouldReconnect = false;
+	private connectionId = 0;
 
 	connect(onEvent: (event: RealtimeEvent) => void, onOpen?: () => void): void {
 		this.close();
@@ -90,6 +95,7 @@ export class RealtimeSocket {
 
 	close(): void {
 		this.shouldReconnect = false;
+		this.connectionId += 1;
 		window.clearTimeout(this.reconnectTimer);
 		closeSocketQuietly(this.socket);
 		this.socket = undefined;
@@ -99,13 +105,14 @@ export class RealtimeSocket {
 
 	private open(): void {
 		if (!this.shouldReconnect) return;
+		const connectionId = (this.connectionId += 1);
 		const socket = realtimeEvents();
 		this.socket = socket;
 		socket.onopen = () => {
 			this.reconnectDelay = 500;
 			this.onOpen?.();
 		};
-		socket.onmessage = (message) => void this.handleMessage(message.data);
+		socket.onmessage = (message) => void this.handleMessage(message.data, connectionId);
 		socket.onerror = () => {
 			socket.close();
 		};
@@ -125,8 +132,9 @@ export class RealtimeSocket {
 		}, delay);
 	}
 
-	private async handleMessage(data: MessageEvent["data"]): Promise<void> {
+	private async handleMessage(data: MessageEvent["data"], connectionId: number): Promise<void> {
 		const event = await parseSocketEvent(data);
+		if (connectionId !== this.connectionId) return;
 		if (isRealtimeEvent(event)) this.onEvent?.(event);
 	}
 }
@@ -137,6 +145,7 @@ export class GlobalSessionSocket {
 	private reconnectTimer?: number;
 	private reconnectDelay = 500;
 	private shouldReconnect = false;
+	private connectionId = 0;
 
 	connect(onEvent: (event: GlobalSessionEvent) => void): void {
 		this.close();
@@ -147,6 +156,7 @@ export class GlobalSessionSocket {
 
 	close(): void {
 		this.shouldReconnect = false;
+		this.connectionId += 1;
 		window.clearTimeout(this.reconnectTimer);
 		closeSocketQuietly(this.socket);
 		this.socket = undefined;
@@ -155,12 +165,13 @@ export class GlobalSessionSocket {
 
 	private open(): void {
 		if (!this.shouldReconnect) return;
+		const connectionId = (this.connectionId += 1);
 		const socket = globalSessionEvents();
 		this.socket = socket;
 		socket.onopen = () => {
 			this.reconnectDelay = 500;
 		};
-		socket.onmessage = (message) => void this.handleMessage(message.data);
+		socket.onmessage = (message) => void this.handleMessage(message.data, connectionId);
 		socket.onerror = () => {
 			socket.close();
 		};
@@ -180,8 +191,9 @@ export class GlobalSessionSocket {
 		}, delay);
 	}
 
-	private async handleMessage(data: MessageEvent["data"]): Promise<void> {
+	private async handleMessage(data: MessageEvent["data"], connectionId: number): Promise<void> {
 		const event = await parseSocketEvent(data);
+		if (connectionId !== this.connectionId) return;
 		if (isGlobalSessionEvent(event)) this.onEvent?.(event);
 	}
 }

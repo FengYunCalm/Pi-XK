@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { MAX_IMAGE_PREVIEW_BYTES, MAX_IMAGE_PREVIEW_LABEL } from "../../../../shared/workspaceFiles";
 import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse } from "../../api";
 import { workspaceImagePreviewUrl } from "../../api/urls";
@@ -52,7 +52,7 @@ function renderTreeEntry(context: WorkspacePanelContext, entry: FileTreeEntry, d
 	const hasChildren = children !== undefined;
 	const selected = entry.type !== "directory" && context.selectedFilePath === entry.path;
 	return html`
-    <button class=${selected ? "row selected" : "row"} style=${`--depth:${String(depth)}`} @click=${() => {
+		<button class=${selected ? "row selected" : "row"} style=${`--depth:${String(depth)}`} aria-current=${selected ? "true" : nothing} @click=${() => {
 			selectTreeEntry(context, entry);
 		}}>
       <span>${entry.type === "directory" ? (hasChildren ? "▾" : "▸") : "·"}</span>
@@ -127,7 +127,7 @@ function renderGit(context: WorkspacePanelContext): TemplateResult {
 						? html`<p class="muted">No changes.</p>`
 						: status.files.map(
 								(file) => html`
-            <button class="row ${context.selectedDiffPath === file.path ? "selected" : ""}" @click=${() => {
+			<button class="row ${context.selectedDiffPath === file.path ? "selected" : ""}" aria-current=${context.selectedDiffPath === file.path ? "true" : nothing} @click=${() => {
 					context.onSelectDiff(file.path);
 				}}>
               <span>${stateLabel(file.index, file.workingTree)}</span>

@@ -115,7 +115,7 @@ export class ToolExecutionView extends LitElement {
     .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
     .tool-card.success { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .tool-card.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); }
-    .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+    .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; min-width: 0; }
     .tool-title { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
     .status-icon { flex: 0 0 auto; color: var(--pi-muted); }
     strong { color: var(--pi-text); }
@@ -149,6 +149,13 @@ export class ToolExecutionView extends LitElement {
     .diff .added { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
     .diff .removed { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
     .show-more { justify-self: start; }
+    @media (max-width: 560px) {
+      .tool-header { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+      .tool-title { max-width: 100%; }
+      .path, .summary { white-space: normal; overflow-wrap: anywhere; }
+      .tool-meta { flex-wrap: wrap; justify-content: flex-start; }
+      .diff-toolbar { flex-wrap: wrap; }
+    }
   `;
 }
 

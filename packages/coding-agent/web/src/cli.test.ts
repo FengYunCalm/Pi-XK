@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { browserOpenCommand, parseForegroundOptions, webInterfaceUrl, webInterfaceUrlWithToken } from "./cli.ts";
+import { createServer } from "node:net";
+import { assertPortAvailable, browserOpenCommand, parseForegroundOptions, webInterfaceUrl, webInterfaceUrlWithToken } from "./cli.ts";
 
 describe("Pi Web CLI", () => {
 	it("parses foreground options with silent logs by default", () => {
@@ -46,5 +47,24 @@ describe("Pi Web CLI", () => {
 			command: "cmd.exe",
 			args: ["/c", "start", "", "http://127.0.0.1:8504/"],
 		});
+	});
+
+	it("reports occupied ports before starting child processes", async () => {
+		const server = createServer();
+		await new Promise<void>((resolve) => server.listen({ host: "127.0.0.1", port: 0 }, resolve));
+		const address = server.address();
+		if (address === null || typeof address === "string") throw new Error("Expected TCP test address");
+		try {
+			await expect(assertPortAvailable("127.0.0.1", String(address.port))).rejects.toThrow(
+				"Choose another port with `pi web --port <port>`",
+			);
+		} finally {
+			await new Promise<void>((resolve, reject) => {
+				server.close((error) => {
+					if (error !== undefined) reject(error);
+					else resolve();
+				});
+			});
+		}
 	});
 });

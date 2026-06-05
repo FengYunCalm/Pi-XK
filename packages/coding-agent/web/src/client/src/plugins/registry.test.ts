@@ -19,6 +19,7 @@ function createContext(statePatch: Partial<AppState> = {}) {
 				open: vi.fn((options?: { terminalId?: string | undefined }) => {
 					calls.push(`terminal.open:${options?.terminalId ?? ""}`);
 				}),
+				dispose: vi.fn(),
 			},
 		},
 		openActionPalette: vi.fn(() => {

@@ -62,8 +62,27 @@ export class PanelCollapseController implements ReactiveController {
 	resize(clientX: number): void {
 		if (this.resizing === undefined) return;
 		const delta = clientX - this.resizing.startX;
-		const nextWidth = this.resizing.startWidth + (this.resizing.side === "navigation" ? delta : -delta);
-		this.setPanelWidth(this.resizing.side, nextWidth, false);
+		this.setPanelWidth(this.resizing.side, nextPanelWidth(this.resizing.side, this.resizing.startWidth, delta), false);
+	}
+
+	resizeBy(side: ResizablePanelSide, deltaX: number): void {
+		this.setPanelWidth(side, nextPanelWidth(side, this.panelWidth(side), deltaX), true);
+	}
+
+	resizeTo(side: ResizablePanelSide, width: number): void {
+		this.setPanelWidth(side, width, true);
+	}
+
+	panelWidth(side: ResizablePanelSide): number {
+		return side === "navigation" ? this.navigationPanelWidth : this.workspacePanelWidth;
+	}
+
+	panelMinWidth(side: ResizablePanelSide): number {
+		return side === "navigation" ? NAVIGATION_PANEL_MIN_WIDTH : WORKSPACE_PANEL_MIN_WIDTH;
+	}
+
+	panelMaxWidth(side: ResizablePanelSide): number {
+		return side === "navigation" ? NAVIGATION_PANEL_MAX_WIDTH : WORKSPACE_PANEL_MAX_WIDTH;
 	}
 
 	endResize(): void {
@@ -110,6 +129,10 @@ export function mainViewClass(mainView: AppState["mainView"]): "navigation-view"
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(Math.round(value), min), max);
+}
+
+function nextPanelWidth(side: ResizablePanelSide, startWidth: number, deltaX: number): number {
+	return startWidth + (side === "navigation" ? deltaX : -deltaX);
 }
 
 function readStoredPanelWidth(side: ResizablePanelSide, fallback: number, min: number, max: number): number {

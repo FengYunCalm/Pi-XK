@@ -26,6 +26,24 @@ describe("TerminalCommandRunRegistry", () => {
 
 		expect(openTerminal).toHaveBeenCalledWith(undefined, { terminalId: "t1" });
 	});
+
+	it("disposes cached runtimes", () => {
+		const runtimes: TerminalCommandRunsInternalRuntime[] = [];
+		const registry = new TerminalCommandRunRegistry({
+			openTerminal: () => undefined,
+			createRuntime: (origin) => {
+				const runtime = fakeRuntime(origin);
+				runtimes.push(runtime);
+				return runtime;
+			},
+		});
+
+		registry.forOrigin("core");
+		registry.forOrigin("plugin");
+		registry.dispose();
+
+		expect(runtimes.map((runtime) => vi.mocked(runtime.dispose).mock.calls.length)).toEqual([1, 1]);
+	});
 });
 
 function fakeRuntime(origin: string, open?: () => void): TerminalCommandRunsInternalRuntime {
@@ -36,5 +54,6 @@ function fakeRuntime(origin: string, open?: () => void): TerminalCommandRunsInte
 		open: () => {
 			open?.();
 		},
+		dispose: vi.fn(),
 	};
 }
